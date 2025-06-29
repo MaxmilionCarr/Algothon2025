@@ -6,9 +6,24 @@ import matplotlib.pyplot as plt
 pricesFile="./prices.txt"
 price_array = loadPrices(pricesFile)
 
-period = 200 # Period in days
 
+def compute_betas(prc, ):
+    n_inst, n_days = prc.shape
+    log_prc = np.log(prc)
+    betas = np.zeros(n_inst)
 
+    if n_days < window + 1:
+        return betas  # fallback: assume 0 beta
+
+    market_returns = np.mean(np.diff(log_prc[:, -window-1:], axis=1), axis=0)
+
+    for i in range(n_inst):
+        stock_returns = np.diff(log_prc[i, -window-1:])
+        cov = np.cov(stock_returns, market_returns)[0, 1]
+        var_market = np.var(market_returns)
+        betas[i] = cov / (var_market + 1e-8)
+
+    return betas
 
 
 

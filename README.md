@@ -1,2 +1,3 @@
 # Algothon2025
-Algothon
+
+For requirements run "pip install -r requirements.txt"
