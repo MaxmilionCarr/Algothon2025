@@ -1,0 +1,10 @@
+name: fremen-env
+channels:
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
+dependencies:
+  - numpy
+  - pandas
+  - python=3.12
+  - statsmodels
+prefix: /opt/anaconda3/envs/fremen-env
