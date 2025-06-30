@@ -5,7 +5,7 @@ from statsmodels.tsa.api import ARDL
 # Global constants
 START = 0     # <-- Start trading after 10 days
 COMMRATE = 0.0005  # <-- Commission rate
-POSLIMIT = 10000   # <-- Dollar position limit
+POSLIMIT = 1000   # <-- Dollar position limit
 N_INST = 50        # <-- Number of instruments
 
 # Global variables
@@ -18,11 +18,11 @@ currentPos = np.zeros(N_INST)
 #     40: 1, 41: 0, 42: 1, 43: 1, 44: 1, 45: 0, 46: 0, 47: 0, 48: 0, 49: 0
 # }
 assignments = {
-    0: 2, 1: 2, 2: 2, 3: 2, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2, 9: 2,
-    10: 2, 11: 2, 12: 2, 13: 2, 14: 2, 15: 2, 16: 2, 17: 2, 18: 2, 19: 2,
-    20: 2, 21: 2, 22: 2, 23: 2, 24: 2, 25: 2, 26: 2, 27: 2, 28: 2, 29: 2,
-    30: 2, 31: 2, 32: 2, 33: 2, 34: 2, 35: 2, 36: 2, 37: 2, 38: 2, 39: 2,
-    40: 2, 41: 2, 42: 2, 43: 2, 44: 2, 45: 2, 46: 2, 47: 2, 48: 2, 49: 2
+    0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0,
+    10: 0, 11: 0, 12: 0, 13: 2, 14: 2, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0,
+    20: 0, 21: 0, 22: 0, 23: 0, 24: 0, 25: 0, 26: 0, 27: 0, 28: 0, 29: 0,
+    30: 0, 31: 0, 32: 0, 33: 2, 34: 0, 35: 0, 36: 0, 37: 0, 38: 0, 39: 0,
+    40: 0, 41: 0, 42: 0, 43: 0, 44: 0, 45: 0, 46: 2, 47: 0, 48: 0, 49: 0
 }
 
 nDays = None
@@ -107,7 +107,7 @@ def strategy_2(prcSoFar, inst):
     # Order: lag 1 for all exogs (column indices 0 to 49)
     order = {i: [1] for i in range(exog.shape[1])}
 
-    model = ARDL(endog=y, lags=1, exog=exog, order=order, causal=True, trend="c")
+    model = ARDL(endog=y, lags=1, exog=exog, order=order)
     result = model.fit()
 
     # Prepare predictors for forecasting: use most recent lag
