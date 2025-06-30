@@ -1,6 +1,10 @@
 import numpy as np
 from collections import Counter
 from statsmodels.tsa.api import ARDL
+from sklearn.linear_model import MultiTaskLasso
+from sklearn.decomposition import PCA
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+import warnings
 
 # Global constants
 START = 0     # <-- Start trading after 10 days
@@ -12,11 +16,11 @@ N_INST = 50        # <-- Number of instruments
 currentPos = np.zeros(N_INST)
 
 assignments = {
-    0: 0, 1: 1, 2: 0, 3: 0, 4: 1, 5: 0, 6: 1, 7: 1, 8: 1, 9: 1,
-    10: 1, 11: 0, 12: 1, 13: 0, 14: 1, 15: 0, 16: 1, 17: 1, 18: 0, 19: 0,
-    20: 0, 21: 1, 22: 1, 23: 1, 24: 0, 25: 1, 26: 0, 27: 1, 28: 1, 29: 0,
-    30: 1, 31: 0, 32: 1, 33: 1, 34: 0, 35: 0, 36: 0, 37: 1, 38: 0, 39: 0,
-    40: 1, 41: 0, 42: 1, 43: 1, 44: 1, 45: 0, 46: 0, 47: 0, 48: 0, 49: 0
+    0: 0,  1: 1,  2: 0,  3: 3,  4: 1,  5: 3,  6: 1,  7: 1,  8: 1,  9: 1,
+    10: 1, 11: 0, 12: 0, 13: 0, 14: 1, 15: 2, 16: 1, 17: 0, 18: 2, 19: 0,
+    20: 3, 21: 1, 22: 1, 23: 1, 24: 2, 25: 1, 26: 2, 27: 1, 28: 1, 29: 2,
+    30: 1, 31: 3, 32: 3, 33: 3, 34: 3, 35: 3, 36: 0, 37: 3, 38: 3, 39: 0,
+    40: 0, 41: 3, 42: 1, 43: 1, 44: 1, 45: 2, 46: 0, 47: 0, 48: 2, 49: 2
 }
 
 nDays = None
@@ -65,7 +69,7 @@ def strategy_1(prcSoFar, inst):
     predicted_y_next = alpha + phi * last_y_ret + beta * last_x_ret
     predicted_p_next = current_price * np.exp(predicted_y_next)
 
-    threshold = 0.000
+    threshold = 0.0000
 
     if predicted_y_next > 0:
         if predicted_y_next > threshold:
@@ -85,10 +89,74 @@ def strategy_1(prcSoFar, inst):
         return currentPos[inst]
 
 def strategy_2(prcSoFar, inst):
-    return 0
+    LOOKBACK = 100
+    N_COMPONENTS = 1
+    threshold_multiplier = 2
+
+    if prcSoFar.shape[1] < LOOKBACK:
+        return currentPos[inst]
+
+    window = prcSoFar[:, -LOOKBACK:]
+    log_prices = np.log(window + 1e-8)
+    log_prices -= np.mean(log_prices, axis=1, keepdims=True)
+
+    # PCA decomposition
+    cov = np.cov(log_prices)
+    eigvals, eigvecs = np.linalg.eigh(cov)
+    idx = np.argsort(eigvals)[::-1]
+    eigvecs = eigvecs[:, idx[:N_COMPONENTS]]
+
+    proj = eigvecs.T @ log_prices
+    reconstructed = eigvecs @ proj
+    residuals = log_prices - reconstructed
+
+    last_resid = residuals[inst, -1]
+    resid_std = np.std(residuals[inst]) * threshold_multiplier
+    current_price = prcSoFar[inst, -1]
+
+    if last_resid > resid_std:
+        return int(-POSLIMIT / current_price)
+    elif last_resid < -resid_std:
+        return int(POSLIMIT / current_price)
+    else:
+        return currentPos[inst]
+
 
 def strategy_3(prcSoFar, inst):
-    return 0
+    global currentPos
+
+    LOOKBACK = 10
+    COMM = COMMRATE
+    SHARPE_THRESHOLD = 2
+
+    if prcSoFar.shape[1] < LOOKBACK + 2:
+        return currentPos[inst]
+
+    log_prices = np.log(prcSoFar[inst])
+    returns = np.diff(log_prices)[-LOOKBACK:]
+
+    model = SARIMAX(
+        returns,
+        order=(1, 0, 0),
+        trend='c',
+        initialization='approximate_diffuse'
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = model.filter(model.start_params)
+
+    predicted_return = result.forecast()[0]
+    resid_std = np.std(result.resid[-LOOKBACK:]) + 1e-9
+    signal_strength = predicted_return / resid_std
+
+    current_price = prcSoFar[inst, -1]
+    position_size = int(POSLIMIT / current_price)
+
+    if abs(predicted_return) < 2 * COMM or abs(signal_strength) < SHARPE_THRESHOLD:
+        return currentPos[inst]
+
+    return position_size if signal_strength > 0 else -position_size
 
 def strategy_4(prcSoFar, inst):
     return 0
