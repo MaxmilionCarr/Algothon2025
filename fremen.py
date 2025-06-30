@@ -94,31 +94,14 @@ def getMyPosition(prcSoFar : np.ndarray) -> np.ndarray:
             instruments[i].compute_beta(current_day=prcSoFar.shape[1], market_returns=market_returns)
     else:
         for i in range(NINST):
-            instruments[i].update_prices(prcSoFar[i])
+            instruments[i].update(prcSoFar[i], market_returns)
             
 
-            
-
-    
-    ## Define inputs ##
-    lookback = 10 # Amount of days before current to compute momentum >= 1
-    scale = 2000 # Aggressiveness of the strategy >= 1
-    window = 10 # Rolling window for mean and std >= 1
-    short = 5 # Short-term moving average window 1<x<=20
-    long = 30 # Long-term moving average window 30<x<=60
-    vol_window = 5 #days for volatility estimation >=1
-    threshold = 1 # number of stds movement that must exceed to trigger entry >= 0
-    a = 0 # first of 2 instrument to trade 0<=x<=49
-    b = 49 # second of 2 instrument to trade 0<=x<=49
-
-
-    # Combine multiple strategies
-    pos += short_term_momentum(prcSoFar, lookback, scale=scale)
-    #pos += normalized_momentum(prcSoFar, lookback, scale=scale)
-    #pos += mean_reversion(prcSoFar, window, scale=scale)
-    #pos += sma_crossover(prcSoFar, short, long, scale)
-    #pos += volatility_breakout(prcSoFar, vol_window, scale, threshold)
-    #pos += pairs_mean_reversion(prcSoFar, a, b, lookback, scale)
+    # Ideas on how to use beta to assign trading strategies #
+    # 1.) Closely beta related should be hedged with each other
+    # 2.) Position reductions for high beta stocks and position increases for low beta stocks
+    # 3.) Consistent beta increases could be funnelled with cash (Volatility Momentum)
+    # 4.) Rotate a designated position amount to high beta and low beta stocks based on the market regime
 
     # Apply position limits
     curPrices = prcSoFar[:, -1]

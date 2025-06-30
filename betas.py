@@ -23,7 +23,7 @@ def compute_betas(prices: np.ndarray, current_day: int) -> np.ndarray:
 
 def plot_beta_bins(prices: np.ndarray, betas: np.ndarray, current_day: int, bins: list = None):
     if bins is None:
-        bins = [-np.inf, -0.5, 0, 0.5, 1.0, np.inf]
+        bins = [-np.inf, -1.5, -0.5, 0, 0.5, 1.0, 1.5, np.inf]
 
     bin_labels = [f"Bin{i+1}" for i in range(len(bins) - 1)]
     beta_bins = pd.cut(betas, bins=bins, labels=bin_labels)
@@ -32,11 +32,13 @@ def plot_beta_bins(prices: np.ndarray, betas: np.ndarray, current_day: int, bins
         grouped[label].append(i)
 
     days = np.arange(current_day)
+    market_line = prices[:, :current_day].mean(axis=0)
 
     for label in bin_labels:
         fig, ax = plt.subplots(figsize=(12, 4))
         for i in grouped[label]:
             ax.plot(days, prices[i, :current_day], alpha=0.6, label=f"Inst {i}")
+        ax.plot(days, market_line, label="Market Avg", color='black', linewidth=2.5, linestyle='--', zorder=10)
         ax.set_title(f"{label} (β ∈ [{bins[bin_labels.index(label)]:.2f}, {bins[bin_labels.index(label)+1]:.2f}])")
         ax.set_ylabel("Price")
         ax.set_xlabel("Day")
@@ -50,5 +52,5 @@ def plot_beta_bins(prices: np.ndarray, betas: np.ndarray, current_day: int, bins
 pricesFile="./prices.txt"
 price_array = loadPrices(pricesFile)
 
-betas = compute_betas(price_array, current_day=750)
-plot_beta_bins(price_array, betas[:5], current_day=750)
+betas = compute_betas(price_array, current_day=50)
+plot_beta_bins(price_array, betas, current_day=50)
