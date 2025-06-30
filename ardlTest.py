@@ -2,83 +2,78 @@ import numpy as np
 import pandas as pd
 from statsmodels.tsa.api import ARDL
 
-# Constants
+# === Parameters ===
+PRICE_FILE = "priceSlice_test.txt"
+LOOKBACK = 100
 POSLIMIT = 1000
 COMMRATE = 0.0005
-LOOKBACK = 100
-THRESHOLD = 0.000  # for position cutoff
 
-# Load and prepare data
-price_data = np.loadtxt("priceSlice_test.txt").T  # shape (50, T)
-N_INST, N_DAYS = price_data.shape
-log_prices = np.log(price_data)
-returns = np.diff(log_prices, axis=1)  # shape (50, T-1)
+# === Load and preprocess ===
+prices = np.loadtxt(PRICE_FILE).T
+n_inst, n_days = prices.shape
+log_prices = np.log(prices)
+returns = np.diff(log_prices, axis=1)
 
-# Storage
 results = []
 
-for inst in range(N_INST):
-    y_ret = returns[inst]
-    pnl_series = []
+for inst in range(n_inst):
+    y = returns[inst]
+    cash = 0
+    position = 0
+    pnl_list = []
     total_error = 0
     count = 0
 
-    for t in range(LOOKBACK + 1, N_DAYS - 1):
-        # Prepare endogenous and exogenous
-        y_window = y_ret[t - LOOKBACK - 1:t - 1]
-        X_window = returns[:, t - LOOKBACK - 1:t - 1].T  # shape (LOOKBACK, 50)
+    for t in range(LOOKBACK + 1, n_days - 1):
+        y_train = y[t - LOOKBACK - 1:t - 1]
+        X_train = returns[:, t - LOOKBACK - 1:t - 1].T
 
-        if y_window.shape[0] != LOOKBACK or X_window.shape != (LOOKBACK, 50):
+        if y_train.shape[0] != LOOKBACK or X_train.shape != (LOOKBACK, n_inst):
             continue
 
-        # ARDL(1,...,1) with intercept
-        order = {i: [1] for i in range(N_INST)}
-        model = ARDL(endog=y_window, lags=1, exog=X_window, order=order, causal=True, trend="c")
+        order = {i: [1] for i in range(n_inst)}
+        model = ARDL(endog=y_train, lags=1, exog=X_train, order=order, trend="c", causal=True)
         result = model.fit()
 
-        # Prediction
-        last_y = y_ret[t - 1]
-        last_X = returns[:, t - 1]
+        y_lag = y[t - 1]
+        x_lag = returns[:, t - 1]
         alpha = result.params[0]
         phi = result.params[1]
         beta = result.params[2:]
 
-        predicted_ret = alpha + phi * last_y + np.dot(beta, last_X)
-        actual_ret = y_ret[t]
-        error = predicted_ret - actual_ret
-        total_error += error ** 2
+        predicted_ret = alpha + phi * y_lag + np.dot(beta, x_lag)
+        actual_ret = y[t]
 
-        # PnL logic
-        price_t = price_data[inst, t]
-        price_tp1 = price_data[inst, t + 1]
+        # Update PnL
+        current_price = prices[inst, t]
+        next_price = prices[inst, t + 1]
+        target_position = POSLIMIT * np.sign(predicted_ret) / current_price
+        delta_position = target_position - position
+        trade_value = abs(delta_position) * current_price
+        commission = trade_value * COMMRATE
 
-        if predicted_ret > THRESHOLD:
-            pos = POSLIMIT / price_t
-        elif predicted_ret < -THRESHOLD:
-            pos = -POSLIMIT / price_t
-        else:
-            pos = 0
+        pnl = target_position * (next_price - current_price) - commission
+        pnl_list.append(pnl)
 
-        pnl = pos * (price_tp1 - price_t) - COMMRATE * abs(pos) * price_t
-        pnl_series.append(pnl)
+        cash += pnl
+        position = target_position
+        total_error += (predicted_ret - actual_ret) ** 2
         count += 1
 
     if count > 0:
-        mean_pnl = np.mean(pnl_series)
-        std_pnl = np.std(pnl_series)
-        score = mean_pnl - 0.1 * std_pnl
+        avg_pnl = np.mean(pnl_list)
+        std_pnl = np.std(pnl_list)
+        score = avg_pnl - 0.1 * std_pnl
         mse = total_error / count
         results.append({
             "instrument": inst,
-            "total_pnl": sum(pnl_series),
-            "mean_pnl": mean_pnl,
-            "std_pnl": std_pnl,
             "score": score,
-            "mse": mse
+            "mse": mse,
+            "total_pnl": np.sum(pnl_list)
         })
-        print(f"Inst {inst:2d} | Score: {score:.4f} | MSE: {mse:.6f} | PnL: {sum(pnl_series):.2f}")
+        print(f"Inst {inst:2d}: Score={score:.4f}, MSE={mse:.6f}, TotalPnL={np.sum(pnl_list):.2f}")
 
-# Save results
+# === Save to CSV ===
 df = pd.DataFrame(results)
-df.to_csv("ardl_strategy2_results.csv", index=False)
-print("Saved results to ardl_strategy2_results.csv")
+df.to_csv("strategy2_test_results_FIXED.csv", index=False)
+print("Saved to strategy2_test_results_FIXED.csv")

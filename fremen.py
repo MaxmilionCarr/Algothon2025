@@ -92,35 +92,33 @@ def strategy_1(prcSoFar, inst):
         return currentPos[inst]
 
 def strategy_2(prcSoFar, inst):
-
     LOOKBACK = 100
     if prcSoFar.shape[1] < LOOKBACK + 2:
-        return currentPos[inst]  # not enough data
+        return currentPos[inst]
 
     log_prices = np.log(prcSoFar[:, -LOOKBACK - 1:])
-    log_returns = np.diff(log_prices, axis=1)  # shape: (50, LOOKBACK)
+    returns = np.diff(log_prices, axis=1)  # shape: (50, LOOKBACK)
 
-    y = log_returns[inst][1:]                     # endogenous
-    X = log_returns[:, :-1].T                     # exogenous: shape (LOOKBACK, 50)
+    y = returns[inst][1:]                   # length LOOKBACK
+    X = returns[:, :-1].T                   # shape: (LOOKBACK, 50)
 
     order = {i: [1] for i in range(X.shape[1])}
     model = ARDL(endog=y, lags=1, exog=X, order=order, causal=True, trend="c")
     result = model.fit()
 
-    y_lag = log_returns[inst][-1]
-    x_lag = log_returns[:, -1]
-
     intercept = result.params[0]
     phi = result.params[1]
-    betas = result.params[2:]
+    beta = result.params[2:]
 
-    predicted_ret = intercept + phi * y_lag + np.dot(betas, x_lag)
+    y_lag = returns[inst][-1]
+    x_lag = returns[:, -1]
 
-    # position logic: match test file
+    predicted_ret = intercept + phi * y_lag + np.dot(beta, x_lag)
+
     price_now = prcSoFar[inst, -1]
-    position = POSLIMIT * np.sign(predicted_ret) / price_now
+    target_position = POSLIMIT * np.sign(predicted_ret) / price_now
 
-    return int(position)
+    return int(target_position)
 
 def strategy_3(prcSoFar, inst):
     return 0
