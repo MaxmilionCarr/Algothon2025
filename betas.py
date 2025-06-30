@@ -1,39 +1,54 @@
-from eval import loadPrices
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
+from eval import loadPrices
+
+def compute_betas(prices: np.ndarray, current_day: int) -> np.ndarray:
+    n_inst, n_days = prices.shape
+    assert current_day <= n_days, "Invalid current_day for beta computation."
+
+    log_prices = np.log(prices[:, :current_day])
+    returns = np.diff(log_prices, axis=1)
+    market_returns = returns.mean(axis=0)
+
+    betas = []
+    for i in range(n_inst):
+        stock_returns = returns[i]
+        cov = np.cov(stock_returns, market_returns)[0, 1]
+        var = np.var(market_returns)
+        beta = cov / (var + 1e-8)
+        betas.append(beta)
+
+    return np.array(betas)
+
+def plot_beta_bins(prices: np.ndarray, betas: np.ndarray, current_day: int, bins: list = None):
+    if bins is None:
+        bins = [-np.inf, -0.5, 0, 0.5, 1.0, np.inf]
+
+    bin_labels = [f"Bin{i+1}" for i in range(len(bins) - 1)]
+    beta_bins = pd.cut(betas, bins=bins, labels=bin_labels)
+    grouped = {label: [] for label in bin_labels}
+    for i, label in enumerate(beta_bins):
+        grouped[label].append(i)
+
+    days = np.arange(current_day)
+
+    for label in bin_labels:
+        fig, ax = plt.subplots(figsize=(12, 4))
+        for i in grouped[label]:
+            ax.plot(days, prices[i, :current_day], alpha=0.6, label=f"Inst {i}")
+        ax.set_title(f"{label} (β ∈ [{bins[bin_labels.index(label)]:.2f}, {bins[bin_labels.index(label)+1]:.2f}])")
+        ax.set_ylabel("Price")
+        ax.set_xlabel("Day")
+        ax.grid(True)
+        ax.legend(loc='upper left', fontsize="x-small", ncol=4)
+        plt.tight_layout()
+        plt.show()
+
+
 
 pricesFile="./prices.txt"
 price_array = loadPrices(pricesFile)
 
-
-def compute_betas(prc, ):
-    n_inst, n_days = prc.shape
-    log_prc = np.log(prc)
-    betas = np.zeros(n_inst)
-
-    if n_days < window + 1:
-        return betas  # fallback: assume 0 beta
-
-    market_returns = np.mean(np.diff(log_prc[:, -window-1:], axis=1), axis=0)
-
-    for i in range(n_inst):
-        stock_returns = np.diff(log_prc[i, -window-1:])
-        cov = np.cov(stock_returns, market_returns)[0, 1]
-        var_market = np.var(market_returns)
-        betas[i] = cov / (var_market + 1e-8)
-
-    return betas
-
-
-
-fig, ax = plt.subplots(figsize=(14, 6))
-for i in range(45, 51):
-    ax.plot(price_array[i, -750:], label=f"Inst {i}", alpha=0.6)
-ax.set_title("Prices of All 50 Instruments Over Last 200 Days")
-ax.set_xlabel("Days")
-ax.set_ylabel("Price")
-ax.grid(True)
-ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1), ncol=2, fontsize='small')
-plt.tight_layout()
-plt.show()
+betas = compute_betas(price_array, current_day=750)
+plot_beta_bins(price_array, betas[:5], current_day=750)
