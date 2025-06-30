@@ -1,95 +1,70 @@
 import numpy as np
+from strategies import short_term_momentum, normalized_momentum, mean_reversion, sma_crossover, volatility_breakout, pairs_mean_reversion
 
-##### TODO #########################################
-### IMPLEMENT 'getMyPosition' FUNCTION #############
-### TO RUN, RUN 'eval.py' ##########################
+class Market:
+    def __init__(self, prices: np.ndarray):
+        self.prices = prices  # shape (n_inst, n_days)
+        self.market_returns_cache: dict[int, np.ndarray] = {}
 
-nInst = 50
-currentPos = np.zeros(nInst)
+    def compute_market_returns(self, day: int) -> np.ndarray:
+        if day not in self.market_returns_cache:
+            log_prices = np.log(self.prices[:, :day])
+            returns = np.diff(log_prices, axis=1)
+            self.market_returns_cache[day] = returns.mean(axis=0)
+        return self.market_returns_cache[day]
 
-### Different Strategies ###
+class Instrument:
+    def __init__(self, inst_id: int, inst_prices: np.ndarray):
+        self.inst_id = inst_id
+        self.prices = inst_prices  # shape: (n_days,)
+        self.n_days = inst_prices.shape[0]
+        self.beta_history: dict[int, float] = {}  # day -> beta
+        self.strategy = None ## Could classify the type of strat used here
 
-# struct prc -> price so far {
-# tuple shape -> (number of instruments, number of days of data available up to current)
-# float dtype -> (daily adjusted close price)
-# }
+    def compute_beta(self, current_day: int, market_returns: np.ndarray) -> float:
+        assert current_day <= self.n_days, "Invalid day"
+        log_prices = np.log(self.prices[:current_day])
+        returns = np.diff(log_prices)
 
-# prc_t prc -> price of the instrument on day i
+        cov = np.cov(returns, market_returns)[0, 1]
+        var = np.var(market_returns)
+        beta = cov / (var + 1e-8)
+
+        self.beta_history[current_day] = beta
+        return beta
+    
+    def update_prices(self, new_prices: np.ndarray):
+        self.prices = new_prices
+        self.n_days = new_prices.shape[0]
+
+    def get_price(self, day: int) -> float | None:
+        return self.prices[day + 1]
+
+    def get_beta(self, day: int) -> float | None:
+        return self.beta_history.get(day)
+
+    def clear_history(self):
+        self.beta_history.clear()
 
 
-### Scalable Measures ###
-
-# int lookback -> measures how many days back to calculate returns
-# int scale -> position sizing constant / aggressiveness of our strat
-
-### General Terms ###
-
-# float signal -> pos/buy, neg/sel, zero/no buy
-
-### Strategies ###
-
-# Short term momentum
-
-def short_term_momentum(prc, lookback, scale):
-    if prc.shape[1] < lookback + 1:
-        return np.zeros(nInst)
-    ret = np.log(prc[:, -1] / prc[:, -lookback - 1])
-    norm = np.linalg.norm(ret)
-    signal = ret / norm if norm > 0 else ret
-    return (scale * signal / prc[:, -1])
-
-# Normalized momentum
-def normalized_momentum(prc, lookback, scale):
-    if prc.shape[1] < lookback + 1:
-        return np.zeros(nInst)
-    ret = np.log(prc[:, -1] / prc[:, -lookback - 1])
-    signal = (ret - np.mean(ret)) / (np.std(ret) + 1e-8)
-    return (scale * signal / prc[:, -1])
-
-# Mean Reversion of Z-Score
-def mean_reversion(prc, window, scale):
-    if prc.shape[1] < window:
-        return np.zeros(nInst)
-    mean = np.mean(prc[:, -window:], axis=1)
-    std = np.std(prc[:, -window:], axis=1) + 1e-8
-    z = (prc[:, -1] - mean) / std
-    return (-scale * z / prc[:, -1])
-
-# SMA
-def sma_crossover(prc, short, long, scale):
-    if prc.shape[1] < long:
-        return np.zeros(nInst)
-    sma_s = np.mean(prc[:, -short:], axis=1)
-    sma_l = np.mean(prc[:, -long:], axis=1)
-    signal = np.sign(sma_s - sma_l)
-    return (scale * signal)
-
-# Volatility Breakout 
-def volatility_breakout(prc, vol_window, scale, threshold):
-    if prc.shape[1] < vol_window + 1:
-        return np.zeros(nInst)
-    ret = np.log(prc[:, -1] / prc[:, -2])
-    vol = np.std(np.log(prc[:, -vol_window:] / prc[:, -vol_window-1:-1]), axis=1) + 1e-8
-    signal = (ret > threshold * vol).astype(float) - (ret < -threshold * vol).astype(float)
-    return (scale * signal)
-
-# Pairs Mean Reversion 
-def pairs_mean_reversion(prc, a, b, lookback, scale):
-    if prc.shape[1] < lookback:
-        return np.zeros(nInst)
-    spread = prc[a, -lookback:] - prc[b, -lookback:]
-    mean = np.mean(spread)
-    std = np.std(spread) + 1e-8
-    z = (spread[-1] - mean) / std
-    pos = np.zeros(nInst)
-    pos[a] = -scale * z
-    pos[b] = scale * z
-    return pos
-
+NINST = 50
+instruments = None
+currentPos = np.zeros(NINST)
 
 def getMyPosition(prcSoFar : np.ndarray) -> np.ndarray:
     global currentPos
-    pos = np.zeros(nInst)
+    global instruments
+
+    if instruments is None:
+        instruments = [
+            Instrument(inst_id=x, inst_prices=prcSoFar[x].copy()) 
+            for x in range(prcSoFar.shape[0])
+        ]
+    else:
+        for i in range(len(instruments)):
+            instruments[i].update_prices(prcSoFar[i])
+            
+    pos = np.zeros(NINST)
 
     ## Define inputs ##
     lookback = 10 # Amount of days before current to compute momentum >= 1

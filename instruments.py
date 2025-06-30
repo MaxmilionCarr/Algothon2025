@@ -6,8 +6,6 @@ import matplotlib.pyplot as plt
 pricesFile="./prices.txt"
 price_array = loadPrices(pricesFile)
 
-
-
 ## Plot instruments with price
 fig, ax = plt.subplots(figsize=(14, 6))
 for i in range(0, 16):
