@@ -12,6 +12,9 @@ class Market:
             returns = np.diff(log_prices, axis=1)
             self.market_returns_cache[day] = returns.mean(axis=0)
         return self.market_returns_cache[day]
+    
+    def update_prices(self, new_prices: np.ndarray):
+        self.prices = new_prices.copy()
 
 class Instrument:
     def __init__(self, inst_id: int, inst_prices: np.ndarray):
@@ -21,51 +24,82 @@ class Instrument:
         self.beta_history: dict[int, float] = {}  # day -> beta
         self.strategy = None ## Could classify the type of strat used here
 
-    def compute_beta(self, current_day: int, market_returns: np.ndarray) -> float:
+    def compute_beta(self, current_day: int, market_returns: np.ndarray, lookback: int | None = None) -> float:
         assert current_day <= self.n_days, "Invalid day"
-        log_prices = np.log(self.prices[:current_day])
-        returns = np.diff(log_prices)
+        assert len(market_returns) == current_day - 1, "Market return shape mismatch"
 
-        cov = np.cov(returns, market_returns)[0, 1]
-        var = np.var(market_returns)
+        if lookback is not None and lookback < current_day:
+            start_idx = current_day - lookback
+            log_prices = np.log(self.prices[start_idx:current_day])
+            returns = np.diff(log_prices)
+            mr = market_returns[-lookback:]
+        else:
+            log_prices = np.log(self.prices[:current_day])
+            returns = np.diff(log_prices)
+            mr = market_returns 
+
+        cov = np.cov(returns, mr)[0, 1]
+        var = np.var(mr)
         beta = cov / (var + 1e-8)
 
         self.beta_history[current_day] = beta
         return beta
     
-    def update_prices(self, new_prices: np.ndarray):
+    def update(self, new_prices: np.ndarray, market_returns: np.ndarray) -> None:
         self.prices = new_prices
         self.n_days = new_prices.shape[0]
 
+        if self.n_days >= 2:
+            self.compute_beta(current_day=self.n_days, market_returns=market_returns)
+
     def get_price(self, day: int) -> float | None:
-        return self.prices[day + 1]
+        return self.prices[day] if 0 <= day < self.n_days else None
 
     def get_beta(self, day: int) -> float | None:
         return self.beta_history.get(day)
 
+    def get_beta_array(day: int) -> np.ndarray:
+        return np.array([inst.get_beta(day) for inst in instruments])
+    
     def clear_history(self):
         self.beta_history.clear()
 
-
 NINST = 50
 instruments = None
+market = None
 currentPos = np.zeros(NINST)
 
 def getMyPosition(prcSoFar : np.ndarray) -> np.ndarray:
     global currentPos
     global instruments
+    global market
+    pos = np.zeros(NINST)
 
+    # Set up Market object
+    if market is None:
+        market = Market(prices=prcSoFar.copy())
+    else:
+        market.update_prices(prcSoFar)
+    
+    # Get market returns at today
+    market_returns = market.compute_market_returns(prcSoFar.shape[1])
+
+    # Set up Instrument list object
     if instruments is None:
         instruments = [
             Instrument(inst_id=x, inst_prices=prcSoFar[x].copy()) 
-            for x in range(prcSoFar.shape[0])
+            for x in range(NINST)
         ]
+        for i in range(NINST):
+            instruments[i].compute_beta(current_day=prcSoFar.shape[1], market_returns=market_returns)
     else:
-        for i in range(len(instruments)):
+        for i in range(NINST):
             instruments[i].update_prices(prcSoFar[i])
             
-    pos = np.zeros(NINST)
 
+            
+
+    
     ## Define inputs ##
     lookback = 10 # Amount of days before current to compute momentum >= 1
     scale = 2000 # Aggressiveness of the strategy >= 1
