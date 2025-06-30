@@ -5,24 +5,18 @@ from statsmodels.tsa.api import ARDL
 # Global constants
 START = 0     # <-- Start trading after 10 days
 COMMRATE = 0.0005  # <-- Commission rate
-POSLIMIT = 1000   # <-- Dollar position limit
+POSLIMIT = 10000   # <-- Dollar position limit
 N_INST = 50        # <-- Number of instruments
 
 # Global variables
 currentPos = np.zeros(N_INST)
-# assignments = {
-#     0: 0, 1: 1, 2: 0, 3: 0, 4: 1, 5: 0, 6: 1, 7: 1, 8: 1, 9: 1,
-#     10: 1, 11: 0, 12: 1, 13: 0, 14: 1, 15: 0, 16: 1, 17: 1, 18: 0, 19: 0,
-#     20: 0, 21: 1, 22: 1, 23: 1, 24: 0, 25: 1, 26: 0, 27: 1, 28: 1, 29: 0,
-#     30: 1, 31: 0, 32: 1, 33: 1, 34: 0, 35: 0, 36: 0, 37: 1, 38: 0, 39: 0,
-#     40: 1, 41: 0, 42: 1, 43: 1, 44: 1, 45: 0, 46: 0, 47: 0, 48: 0, 49: 0
-# }
+
 assignments = {
-    0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0,
-    10: 0, 11: 0, 12: 0, 13: 2, 14: 2, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0,
-    20: 0, 21: 0, 22: 0, 23: 0, 24: 0, 25: 0, 26: 0, 27: 0, 28: 0, 29: 0,
-    30: 0, 31: 0, 32: 0, 33: 2, 34: 0, 35: 0, 36: 0, 37: 0, 38: 0, 39: 0,
-    40: 0, 41: 0, 42: 0, 43: 0, 44: 0, 45: 0, 46: 2, 47: 0, 48: 0, 49: 0
+    0: 0, 1: 1, 2: 0, 3: 0, 4: 1, 5: 0, 6: 1, 7: 1, 8: 1, 9: 1,
+    10: 1, 11: 0, 12: 1, 13: 0, 14: 1, 15: 0, 16: 1, 17: 1, 18: 0, 19: 0,
+    20: 0, 21: 1, 22: 1, 23: 1, 24: 0, 25: 1, 26: 0, 27: 1, 28: 1, 29: 0,
+    30: 1, 31: 0, 32: 1, 33: 1, 34: 0, 35: 0, 36: 0, 37: 1, 38: 0, 39: 0,
+    40: 1, 41: 0, 42: 1, 43: 1, 44: 1, 45: 0, 46: 0, 47: 0, 48: 0, 49: 0
 }
 
 nDays = None
@@ -92,33 +86,7 @@ def strategy_1(prcSoFar, inst):
         return currentPos[inst]
 
 def strategy_2(prcSoFar, inst):
-    LOOKBACK = 100
-    if prcSoFar.shape[1] < LOOKBACK + 2:
-        return currentPos[inst]
-
-    log_prices = np.log(prcSoFar[:, -LOOKBACK - 1:])
-    returns = np.diff(log_prices, axis=1)  # shape: (50, LOOKBACK)
-
-    y = returns[inst][1:]                   # length LOOKBACK
-    X = returns[:, :-1].T                   # shape: (LOOKBACK, 50)
-
-    order = {i: [1] for i in range(X.shape[1])}
-    model = ARDL(endog=y, lags=1, exog=X, order=order, causal=True, trend="c")
-    result = model.fit()
-
-    intercept = result.params[0]
-    phi = result.params[1]
-    beta = result.params[2:]
-
-    y_lag = returns[inst][-1]
-    x_lag = returns[:, -1]
-
-    predicted_ret = intercept + phi * y_lag + np.dot(beta, x_lag)
-
-    price_now = prcSoFar[inst, -1]
-    target_position = POSLIMIT * np.sign(predicted_ret) / price_now
-
-    return int(target_position)
+    return 0
 
 def strategy_3(prcSoFar, inst):
     return 0
