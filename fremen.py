@@ -21,7 +21,6 @@ assignments = {
 
 nDays = None
 
-
 # Predictor relationships from ARDL (predict target using regressor)
 predictors = {
     0: 31, 1: 34, 2: 21, 3: 4, 4: 19, 5: 28, 6: 3, 7: 26, 8: 29, 9: 40,
