@@ -3,7 +3,7 @@ from collections import Counter
 from statsmodels.tsa.api import ARDL
 
 # Global constants
-START = 50     # <-- Start trading after 10 days
+START = 0     # <-- Start trading after 10 days
 COMMRATE = 0.0005  # <-- Commission rate
 POSLIMIT = 10000   # <-- Dollar position limit
 N_INST = 50        # <-- Number of instruments
@@ -35,7 +35,8 @@ def strategy_0(prcSoFar, inst):
     return 0
 
 def strategy_1(prcSoFar, inst):
-    if inst not in predictors or prcSoFar.shape[1] < 5:
+
+    if inst not in predictors or prcSoFar.shape[1] < 20:
         return currentPos[inst]
 
     x_idx = predictors[inst]
@@ -63,10 +64,22 @@ def strategy_1(prcSoFar, inst):
     predicted_y_next = alpha + phi * last_y_ret + beta * last_x_ret
     predicted_p_next = current_price * np.exp(predicted_y_next)
 
+    threshold = 0.000
+
     if predicted_y_next > 0:
-        return int(POSLIMIT / current_price)
+        if predicted_y_next > threshold:
+            return int(POSLIMIT / current_price)
+        elif currentPos[inst] > 0:
+            return currentPos[inst]
+        else:
+            return 0
     elif predicted_y_next < 0:
-        return int(-POSLIMIT / current_price)
+        if abs(predicted_y_next) > threshold:
+            return int(-POSLIMIT / current_price)
+        elif currentPos[inst] < 0:
+            return currentPos[inst]
+        else:
+            return 0
     else:
         return currentPos[inst]
 

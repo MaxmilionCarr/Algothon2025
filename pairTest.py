@@ -4,7 +4,7 @@ from statsmodels.tsa.api import ARDL
 from itertools import product
 
 # Load price data
-price_data = np.loadtxt("priceSlice_test.txt").T # shape (50, T)
+price_data = np.loadtxt("priceSlice_test.txt").T[:, :350] # shape (50, T)
 N_INST, N_DAYS = price_data.shape
 POSLIMIT = 1000
 COMMRATE = 0.0005
