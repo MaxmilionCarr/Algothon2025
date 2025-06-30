@@ -92,51 +92,35 @@ def strategy_1(prcSoFar, inst):
         return currentPos[inst]
 
 def strategy_2(prcSoFar, inst):
+
     LOOKBACK = 100
-
     if prcSoFar.shape[1] < LOOKBACK + 2:
-        return currentPos[inst]  # return current position if insufficient data
+        return currentPos[inst]  # not enough data
 
-    # Compute log returns (shape: N_INST x (T-1))
     log_prices = np.log(prcSoFar[:, -LOOKBACK - 1:])
-    returns = np.diff(log_prices, axis=1)
+    log_returns = np.diff(log_prices, axis=1)  # shape: (50, LOOKBACK)
 
-    y = returns[inst][1:]  # skip first return so we can lag
-    exog = returns[:, :-1].T  # predictors: shape (LOOKBACK, 50)
+    y = log_returns[inst][1:]                     # endogenous
+    X = log_returns[:, :-1].T                     # exogenous: shape (LOOKBACK, 50)
 
-    # Order: lag 1 for all exogs (column indices 0 to 49)
-    order = {i: [1] for i in range(exog.shape[1])}
-
-    model = ARDL(endog=y, lags=1, exog=exog, order=order)
+    order = {i: [1] for i in range(X.shape[1])}
+    model = ARDL(endog=y, lags=1, exog=X, order=order, causal=True, trend="c")
     result = model.fit()
 
-    # Prepare predictors for forecasting: use most recent lag
-    y_lag = returns[inst][-1]
-    x_lag = returns[:, -1]
+    y_lag = log_returns[inst][-1]
+    x_lag = log_returns[:, -1]
 
-    # Predict next return
-    predicted_y_next = result.params[0] + result.params[1] * y_lag + np.dot(result.params[2:], x_lag)
+    intercept = result.params[0]
+    phi = result.params[1]
+    betas = result.params[2:]
 
-    current_price = prcSoFar[inst, -1]
+    predicted_ret = intercept + phi * y_lag + np.dot(betas, x_lag)
 
-    threshold = 0.000
+    # position logic: match test file
+    price_now = prcSoFar[inst, -1]
+    position = POSLIMIT * np.sign(predicted_ret) / price_now
 
-    if predicted_y_next > 0:
-        if predicted_y_next > threshold:
-            return int(POSLIMIT / current_price)
-        elif currentPos[inst] > 0:
-            return currentPos[inst]
-        else:
-            return 0
-    elif predicted_y_next < 0:
-        if abs(predicted_y_next) > threshold:
-            return int(-POSLIMIT / current_price)
-        elif currentPos[inst] < 0:
-            return currentPos[inst]
-        else:
-            return 0
-    else:
-        return currentPos[inst]
+    return int(position)
 
 def strategy_3(prcSoFar, inst):
     return 0
