@@ -87,6 +87,7 @@ def strategy_1(prcSoFar, inst):
         return currentPos[inst]
 
 def strategy_2(prcSoFar, inst):
+
     LOOKBACK = 100
     N_COMPONENTS = 1
     threshold_multiplier = 2

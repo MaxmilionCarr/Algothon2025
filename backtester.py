@@ -109,7 +109,7 @@ class Params:
         strategy_function_name: str = default_strategy_function_name,
         strategy_function: FunctionType | None = None,
         start_day: int = 1,
-        end_day: int = 750,
+        end_day: int = 1000,
         enable_commission: bool = True,
         graphs: List[str] = ["cum-pnl", "sharpe-heat-map", "daily-pnl"],
         prices_filepath: str = "./prices.txt",
