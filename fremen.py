@@ -111,9 +111,9 @@ def strategy_1(inst_idx: int, predictors: dict[int, int]) -> int:
     y_ret = np.diff(y_log)
     x_ret = np.diff(x_log)
 
-    LOOKBACK = 45
+    LOOKBACK = 60
     MIN_CORRELATION = 0.3
-    CONFIDENCE_THRESHOLD = 0.25
+    CONFIDENCE_THRESHOLD = 0.5
 
     # Check correlation
     corr = np.corrcoef(y_ret[-LOOKBACK:], x_ret[-LOOKBACK:])[0, 1]
@@ -138,9 +138,11 @@ def strategy_1(inst_idx: int, predictors: dict[int, int]) -> int:
 
     current_price = y_prices[-1]
     if predicted_y_next > 0:
-        return int(POSLIMIT / current_price)
+        position_size = int((abs(predicted_y_next) / confidence) * POSLIMIT / current_price)
+        return min(position_size, POSLIMIT / current_price)
     elif predicted_y_next < 0:
-        return int(-POSLIMIT / current_price)
+        position_size = int((abs(predicted_y_next) / confidence) * POSLIMIT / current_price)
+        return max(position_size, -POSLIMIT / current_price)
     else:
         return 0
 
@@ -218,9 +220,7 @@ def getMyPosition(prcSoFar):
             currentPos[i] = 0
             continue
    
-        if abs(beta) > 1.3:
-            assignments[i] = 0
-        elif abs(beta) > 0.9 and abs(beta) < 1.1:
+        elif 0.5 < abs(beta) < 1.3:
             assignments[i] = 1
             diffs = np.square(betas - beta)
             diffs[i] = np.inf
@@ -228,15 +228,12 @@ def getMyPosition(prcSoFar):
             closest_index = int(np.argmin(diffs))
             beta_diff = abs(betas[closest_index] - beta)
             
-            if beta_diff <= 0.5:
+            if beta_diff <= 0.15:
                 predictors[i] = closest_index
                 currentPos[i] = strategy_1(i, predictors)
             else:
                 assignments[i] = 0
                 currentPos[i] = 0
-
-        else:
-            assignments[i] = 0
 
 
 
@@ -244,5 +241,7 @@ def getMyPosition(prcSoFar):
         #strat_func = strategy_functions[strat_num]
         #desired_position = strat_func(prcSoFar, i, predictors)
         #currentPos[i] = int(desired_position)
-
+    
+    traded = len([x for x in currentPos if x != 0])
+    print(f"Number of instruments traded: {traded} / 50")
     return currentPos
