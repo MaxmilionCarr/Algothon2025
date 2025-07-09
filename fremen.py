@@ -2,6 +2,7 @@ import numpy as np
 import itertools
 
 COMMRATE = 0.0005
+
 POSLIMIT = 10000
 N_INST = 50
 currentPos = np.zeros(N_INST)
