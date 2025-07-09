@@ -18,7 +18,7 @@ import json
 START_DAY: int = 0
 END_DAY: int = 0
 INSTRUMENT_POSITION_LIMIT: int = 10000
-COMMISSION_RATE: float = 0.0005
+COMMISSION_RATE: float = 0.000
 NUMBER_OF_INSTRUMENTS: int = 50
 
 PLOT_COLORS: Dict[str, str] = {
@@ -109,7 +109,7 @@ class Params:
         strategy_function_name: str = default_strategy_function_name,
         strategy_function: FunctionType | None = None,
         start_day: int = 1,
-        end_day: int = 1000,
+        end_day: int = 500,
         enable_commission: bool = True,
         graphs: List[str] = ["cum-pnl", "sharpe-heat-map", "daily-pnl"],
         prices_filepath: str = "./prices.txt",
