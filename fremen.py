@@ -1,8 +1,4 @@
 import numpy as np
-import statsmodels.api as sm
-from sklearn.linear_model import Ridge
-from sklearn.cluster import KMeans
-from statsmodels.tsa.stattools import adfuller
 import itertools
 
 COMMRATE = 0.0005
@@ -101,15 +97,11 @@ def backtest(price_series, strategy_fn, params, backtest_window):
     return score, latest_signal
     
 def strategy_1(prices, t, params):
-    window = params['window']
-    if t < window:
-        return 0
-    ret = prices[t] - prices[t - window]
-    return np.sign(ret)
+    return 0
 
 candidates = [
-        (strategy_1, {'window': [5, 10, 15]})
+        (strategy_1, {})
     ]
 
-BACKTEST_WINDOW = 40
-MIN_SCORE_THRESH = 0.0
+BACKTEST_WINDOW = 50
+MIN_SCORE_THRESH = 0
