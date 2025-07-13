@@ -1,28 +1,30 @@
 import numpy as np
-import statsmodels.api as sm
+import pandas as pd
 import itertools
-from sklearn.linear_model import Ridge
-import time
-from sklearn.metrics import r2_score
+from sklearn.linear_model import LogisticRegression
+from scipy.stats import skew
 
 COMMRATE = 0.0005
 POSLIMIT = 10000
 N_INST = 50
 currentPos = np.zeros(N_INST)
 nDays = 0
+best_strategy_cache = {}
+cached_features = {}
 
 def getMyPosition(prcSoFar):
     global currentPos, N_INST, nDays
 
     N_INST, nDays = prcSoFar.shape
 
+    preCalcs(prcSoFar, nDays)
+
     for inst in range(N_INST):
         currentPos[inst] = int(getPos(prcSoFar, inst))
-
     return currentPos
 
 def getPos(prcSoFar, inst):
-    global currentPos, POSLIMIT, nDays, candidates, BACKTEST_WINDOW, MIN_SCORE_THRESH
+    global currentPos, POSLIMIT, nDays, candidates, BACKTEST_WINDOW, MIN_SCORE_THRESH, best_strategy_cache
 
     if nDays <= BACKTEST_WINDOW + 1:
         return 0
@@ -31,24 +33,31 @@ def getPos(prcSoFar, inst):
     prev_pos = currentPos[inst]
     max_pos = POSLIMIT / current_price
 
-    best_score = -np.inf
-    best_strategy = None
-    best_params = None
+    last_eval_day, best_strategy, best_params = best_strategy_cache.get(inst, (-BACKTEST_WINDOW, None, None))
 
-    for strategy_fn, param_grid in candidates:
-        param_names = list(param_grid.keys())
-        param_combos = list(itertools.product(*[param_grid[k] for k in param_names]))
+    if nDays - 1 >= last_eval_day + BACKTEST_WINDOW:
+        best_score = -np.inf
 
-        for combo in param_combos:
-            params = dict(zip(param_names, combo))
-            score, _ = backtest(prcSoFar, strategy_fn, params, BACKTEST_WINDOW, inst)
+        for strategy_fn, param_grid in candidates:
+            param_names = list(param_grid.keys())
+            param_combos = list(itertools.product(*[param_grid[k] for k in param_names]))
 
-            if score > best_score:
-                best_score = score
-                best_strategy = strategy_fn
-                best_params = params
+            for combo in param_combos:
+                params = dict(zip(param_names, combo))
+                score, _ = backtest(prcSoFar, strategy_fn, params, BACKTEST_WINDOW, inst)
 
-    if best_score < MIN_SCORE_THRESH:
+                if score > best_score:
+                    best_score = score
+                    best_strategy = strategy_fn
+                    best_params = params
+
+        if best_score < MIN_SCORE_THRESH:
+            best_strategy_cache[inst] = (nDays - 1, None, None)
+            return 0
+
+        best_strategy_cache[inst] = (nDays - 1, best_strategy, best_params)
+
+    if best_strategy is None:
         return 0
 
     best_params['self'] = inst
@@ -56,275 +65,257 @@ def getPos(prcSoFar, inst):
     best_signal = np.clip(best_signal, -1, 1)
     target_pos = (POSLIMIT / current_price) * best_signal
 
-    #print(best_strategy)         #         <------- print strategy
-
     if abs(best_signal) > 1e-6:
-        if abs(target_pos - prev_pos) > 1e-6:
+        if np.sign(target_pos) != np.sign(prev_pos):
             return target_pos
-        else:
+        elif abs(target_pos) < abs(np.sign(prev_pos) * min(abs(prev_pos), max_pos)):
             return np.sign(prev_pos) * min(abs(prev_pos), max_pos)
+        else: 
+            return target_pos
     else:
-        return 0
-    
+        return np.sign(prev_pos) * min(abs(prev_pos), max_pos)
+
+def preCalcs(prcSoFar, t):
+    global cached_features, candidates
+
+    N = prcSoFar.shape[0]
+
+    cached_features[t] = {}
+
+    # Collect all unique trend lengths from global candidates
+    trend_lengths = sorted(set(
+        trend_len
+        for (_, param_grid) in candidates
+        for trend_len in param_grid.get('trend_length', [])
+    ))
+
+    for trend_len in trend_lengths:
+        slopes = []
+        for j in range(N):
+            p = prcSoFar[j, t - trend_len + 1 : t + 1]
+            slopes.append(np.polyfit(np.arange(len(p)), np.log(p), 1)[0])
+        cached_features[t][f'avg_market_trend_{trend_len}'] = np.mean(slopes)
+
 def backtest(prcSoFar, strategy_fn, params, backtest_window, inst):
     global POSLIMIT, COMMRATE, nDays
     params['self'] = inst
 
-    daily_returns = []
-    last_position = 0
-    for t in range(nDays - backtest_window - 1, nDays - 1):
-        price = prcSoFar[inst, t]
-        signal = strategy_fn(prcSoFar, t, params)
-        signal = np.clip(signal, -1, 1)
+    price_series = prcSoFar[inst]
+    start_main = nDays - backtest_window - 1
+    end_main = nDays - 1
+
+    pl_list = []
+    last_pos = 0
+
+    for t in range(start_main, end_main):
+        preCalcs(prcSoFar, t) 
+        price = price_series[t]
+        signal = np.clip(strategy_fn(prcSoFar, t, params), -1, 1)
         position = (POSLIMIT / price) * signal
 
-        next_ret = prcSoFar[inst, t + 1] - prcSoFar[inst, t]
+        next_ret = price_series[t + 1] - price_series[t]
         pl = position * next_ret
 
-        if np.sign(position) != np.sign(last_position):
-            if last_position != 0:
-                pl -= COMMRATE * abs(last_position) * prcSoFar[inst, t]
+        if np.sign(position) != np.sign(last_pos):
+            if last_pos != 0:
+                pl -= COMMRATE * abs(last_pos) * price
             if position != 0:
-                pl -= COMMRATE * abs(position) * prcSoFar[inst, t]
+                pl -= COMMRATE * abs(position) * price
 
-        daily_returns.append(pl)
-        last_position = position
+        pl_list.append(pl)
+        last_pos = position
 
-    pl_arr = np.array(daily_returns)
-    if len(pl_arr) == 0:
+    if not pl_list:
         return -np.inf, 0
 
-    mean_pl = np.mean(pl_arr)
-    std_pl = np.std(pl_arr)
+    pl_arr = np.array(pl_list)
+    mean_pl = pl_arr.mean()
+    std_pl = pl_arr.std()
     score = mean_pl - 0.1 * std_pl
 
-    # === Robustness check: Repeat full backtest window backward in time ===
-    for i in range(N_CHECKS):
-        end_day = nDays - 1 - i * backtest_window
-        start_day = end_day - backtest_window
-        if start_day < 0:
-            continue
+    if N_CHECKS > 0:
+        for i in range(N_CHECKS):
+            end_day = nDays - 1 - i * backtest_window
+            start_day = end_day - backtest_window
+            if start_day < 0:
+                continue
 
-        pl_check = []
-        last_pos = 0
-        for t_check in range(start_day, end_day):
-            price = prcSoFar[inst, t_check]
-            params['self'] = inst
-            signal = strategy_fn(prcSoFar, t_check, params)
-            signal = np.clip(signal, -1, 1)
-            position = (POSLIMIT / price) * signal
+            check_pl = []
+            last_pos = 0
+            for t in range(start_day, end_day):
+                preCalcs(prcSoFar, t) 
+                price = price_series[t]
+                signal = np.clip(strategy_fn(prcSoFar, t, params), -1, 1)
+                position = (POSLIMIT / price) * signal
+                next_ret = price_series[t + 1] - price_series[t]
+                pl = position * next_ret
 
-            next_ret = prcSoFar[inst, t_check + 1] - prcSoFar[inst, t_check]
-            pl = position * next_ret
+                if np.sign(position) != np.sign(last_pos):
+                    if last_pos != 0:
+                        pl -= COMMRATE * abs(last_pos) * price
+                    if position != 0:
+                        pl -= COMMRATE * abs(position) * price
 
-            if np.sign(position) != np.sign(last_pos):
-                if last_pos != 0:
-                    pl -= COMMRATE * abs(last_pos) * prcSoFar[inst, t_check]
-                if position != 0:
-                    pl -= COMMRATE * abs(position) * prcSoFar[inst, t_check]
+                check_pl.append(pl)
+                last_pos = position
 
-            pl_check.append(pl)
-            last_pos = position
+            check_pl = np.array(check_pl)
+            if check_pl.size == 0:
+                continue
+            if (check_pl.mean() - 0.1 * check_pl.std()) < MIN_SCORE_THRESH:
+                return -np.inf, 0
 
-        pl_check = np.array(pl_check)
-        if len(pl_check) == 0:
-            continue
-        mean_check = np.mean(pl_check)
-        std_check = np.std(pl_check)
-        if (mean_check - 0.1 * std_check) < 0:
-            return -np.inf, 0
-
-    # Final signal for current day
-    latest_signal = strategy_fn(prcSoFar, nDays - 1, params)
-    latest_signal = np.clip(latest_signal, -1, 1)
-
+    preCalcs(prcSoFar, nDays - 1)
+    latest_signal = np.clip(strategy_fn(prcSoFar, nDays - 1, params), -1, 1)
     return score, latest_signal
 
-######################################################################
+def extract_features(prices, feature_set):
+    features = []
+    log_returns = np.diff(np.log(prices))
 
-def strategy_1(prcSoFar, t, params): # -8.6 most frequently traded
+    for feat in feature_set:  
+
+        if feat == 'skewness':
+            features.append(skew(log_returns))
+        
+        elif feat == 'price_position':
+            rel_pos = (prices[-1] - np.min(prices)) / (np.max(prices) - np.min(prices) + 1e-8)
+            features.append(rel_pos)
+        
+        elif feat == 'autocorr':
+            if len(log_returns) >= 2:
+                ac = np.corrcoef(log_returns[1:], log_returns[:-1])[0, 1]
+                features.append(ac)
+            else:
+                features.append(0.0)
+
+    return features
+
+def strategy_1(prcSoFar, t, params):
+
+    inst = params['self']
+    lookback = params['lookback']
+    window = params['window']
+    n_partners = params['n_partners']
+    feature_set = params['feature_set']
+    use_prices = params['use_prices']
+    prob_thresh = params['prob_thresh']
+    trend_length = params['trend_length']
+    avg_trend = cached_features[nDays][f'avg_market_trend_{trend_length}']
+
+    if t < lookback + window:
+        return 0
+
+    y_prices = prcSoFar[inst, t - lookback - window + 1 : t + 1]
+
+    top_partners = []
+    if n_partners > 0:
+        y_logr = np.diff(np.log(y_prices))
+        partner_scores = []
+        for j in range(prcSoFar.shape[0]):
+            if j == inst:
+                continue
+            p = prcSoFar[j, t - lookback - window + 1 : t + 1]
+            r = np.diff(np.log(p))
+            if len(r) == len(y_logr):
+                r_lagged = r[:-1]
+                y_trimmed = y_logr[1:]
+                if len(r_lagged) == len(y_trimmed):
+                    c = np.corrcoef(y_trimmed, r_lagged)[0, 1]
+                    partner_scores.append((j, abs(c)))
+        partner_scores.sort(key=lambda x: -x[1])
+        top_partners = [j for j, _ in partner_scores[:n_partners]]
+
+    X, Y = [], []
+    for i in range(len(y_prices) - lookback - window + 1, len(y_prices) - window):
+        start = i
+        end = i + window + 1
+        if end > len(y_prices):
+            break
+
+        y_seg = y_prices[start:end]
+        feat = extract_features(y_seg, feature_set)
+
+        if use_prices:
+            feat.extend(y_seg[:-1].tolist())
+
+        for j in top_partners:
+            p_seg = prcSoFar[j, t - lookback - window + 1 : t + 1]
+            p_window = p_seg[start:end]
+            p_feat = extract_features(p_window, feature_set)
+            feat.extend(p_feat)
+            if use_prices:
+                feat.extend(p_window[:-1].tolist())
+
+        r_next = np.log(y_prices[end - 1]) - np.log(y_prices[end - 2])
+        if r_next > COMMRATE:
+            y_i = 1
+        elif r_next < -COMMRATE:
+            y_i = -1
+        else:
+            y_i = 0
+
+        X.append(feat)
+        Y.append(y_i)
+
+    X = np.array(X)
+    Y = np.array(Y)
+
+    if len(np.unique(Y)) == 1:
+        if len(Y) >= 10 and 1 == 0:
+            return int(Y[0])
+        else:
+            return 0
+
+    model = LogisticRegression(solver='liblinear')
+    model.fit(X, Y)
+
+    x_today = extract_features(y_prices, feature_set)
+    if use_prices:
+        x_today.extend(y_prices[-window - 1:-1].tolist())
+
+    for j in top_partners:
+        p_prices = prcSoFar[j, t - window : t + 1]
+        p_feat = extract_features(p_prices, feature_set)
+        x_today.extend(p_feat)
+        if use_prices:
+            x_today.extend(p_prices[:-1].tolist())
+
+    x_today = np.array(x_today).reshape(1, -1)
+    probs = model.predict_proba(x_today)[0]
+    labels = model.classes_
+    prob_map = dict(zip(labels, probs))
+
+    p_buy = prob_map.get(1, 0)
+    p_sell = prob_map.get(-1, 0)
+
+    if avg_trend > 0:
+        p_sell = 0
+    elif avg_trend < 0:
+        p_buy = 0
+
+    if p_buy > prob_thresh:
+        return p_buy
+    elif p_sell > prob_thresh:
+        return -p_sell
     return 0
-    lookback = params['lookback']
-    x_lags = params['x_lags']
-    r2_thresh = params['r2_thresh']
-    inst = params['self']
-
-    if t < lookback + x_lags:
-        return 0
-
-    y = prcSoFar[inst, t - lookback + 1 : t + 1]
-
-    X = []
-    for lag in range(1, x_lags + 1):
-        X.append(prcSoFar[inst, t - lookback + 1 - lag : t + 1 - lag])
-    X = np.vstack(X).T
-
-    X = sm.add_constant(X)
-    model = sm.OLS(y, X).fit()
-
-    if model.rsquared < r2_thresh:
-        return 0
-
-    x_next = [prcSoFar[inst, t - lag + 1] for lag in range(1, x_lags + 1)]
-    x_next = np.array([1.0] + x_next)
-    y_pred = model.predict(x_next)[0]
-
-    delta = y_pred - prcSoFar[inst, t]
-    if delta > 0:
-        return 1
-    elif delta < 0:
-        return -1
-    else:
-        return 0
-
-def strategy_2(prcSoFar, t, params): # -2.08
-    #return 0
-    lookback = params['lookback']
-    x_lags = params['x_lags']
-    r2_thresh = params['r2_thresh']
-    alpha = params['alpha']
-    inst = params['self']
-
-    if t < lookback + x_lags:
-        return 0
-
-    y = prcSoFar[inst, t - lookback + 1 : t + 1]
-
-    X = []
-    for lag in range(1, x_lags + 1):
-        X.append(prcSoFar[inst, t - lookback + 1 - lag : t + 1 - lag])
-    X = np.vstack(X).T  # shape = (lookback, x_lags)
-
-    model = Ridge(alpha=alpha, fit_intercept=True)
-    model.fit(X, y)
-
-    y_fit = model.predict(X)
-    r2 = r2_score(y, y_fit)
-    if r2 < r2_thresh:
-        return 0
-
-    x_next = [prcSoFar[inst, t - lag + 1] for lag in range(1, x_lags + 1)]
-    x_next = np.array(x_next).reshape(1, -1)
-    y_pred = model.predict(x_next)[0]
-
-    delta = y_pred - prcSoFar[inst, t]
-    if delta > 0:
-        return 1
-    elif delta < 0:
-        return -1
-    else:
-        return 0
-
-def strategy_3(prcSoFar, t, params): # -4.64 way too slow
-    return 0
-
-    lookback = params['lookback']
-    r2_thresh = params['r2_thresh']
-    inst = params['self']
-    N_INST = prcSoFar.shape[0]
-
-    if t < lookback + 1:
-        return 0
-
-    y = prcSoFar[inst, t - lookback + 1 : t + 1]                     # current instrument
-    y_lag = prcSoFar[inst, t - lookback : t]                         # lagged self
-
-    best_r2 = -np.inf
-    best_peer = None
-
-    for j in range(N_INST):
-        if j == inst:
-            continue
-        x_lag = prcSoFar[j, t - lookback : t]
-
-        X = np.column_stack([y_lag, x_lag])
-        X = sm.add_constant(X)
-        model = sm.OLS(y, X).fit()
-        r2 = model.rsquared
-
-        if r2 > best_r2:
-            best_r2 = r2
-            best_peer = j
-
-    if best_r2 < r2_thresh:
-        return 0
-
-    # Refit ARDL(1,1) with best peer
-    x_best_lag = prcSoFar[best_peer, t - lookback : t]
-    X_final = np.column_stack([y_lag, x_best_lag])
-    X_final = sm.add_constant(X_final)
-    model_final = sm.OLS(y, X_final).fit()
-
-    final_r2 = model_final.rsquared
-    if final_r2 < r2_thresh:
-        return 0
-
-    # Forecast y_{t+1}
-    y_last = prcSoFar[inst, t]
-    x_last = prcSoFar[best_peer, t]
-    X_next = np.array([1.0, y_last, x_last])
-    y_pred = model_final.predict(X_next)[0]
-
-    delta = y_pred - y_last
-    if delta > 0:
-        return 1
-    elif delta < 0:
-        return -1
-    else:
-        return 0
-
-def strategy_4(prcSoFar, t, params): # -4.9 very fast -- add more candidates
-    #return 0
-
-    lookback = params['lookback']
-    slope_thresh = params['slope_thresh']
-    r2_thresh = params['r2_thresh']
-    inst = params['self']
-
-    if t < lookback:
-        return 0
-
-    y = prcSoFar[inst, t - lookback + 1 : t + 1]
-    x = np.arange(lookback)
-
-    # Fit linear trend: y = a + b*t
-    b, a = np.polyfit(x, y, 1)  # slope b, intercept a
-    y_pred = a + b * x
-
-    # Compute R² manually
-    ss_res = np.sum((y - y_pred) ** 2)
-    ss_tot = np.sum((y - np.mean(y)) ** 2)
-    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0
-
-    if abs(b) < slope_thresh or r2 < r2_thresh:
-        return 0
-    return 1 if b > 0 else -1
-
-# === CANDIDATES ===
 
 candidates = [
     (strategy_1, {
-        'lookback': [5],
-        'x_lags': [1,2,3],
-        'r2_thresh': [0.95]
-    }),
-    (strategy_2, {
-        'lookback': [5],
-        'x_lags': [1,2,3],
-        'r2_thresh': [0.95],
-        'alpha': [1]
-    }),
-    (strategy_3, {
-        'lookback': [5],
-        'r2_thresh': [0.95]
-    }),
-    (strategy_4, {
-        'lookback': [5],
-        'slope_thresh': [0],
-        'r2_thresh': [0.95]
+        'lookback': [20],
+        'window': [5],
+        'prob_thresh': [0.5],
+        'n_partners': [0],
+        'feature_set': [[
+            'skewness',
+            'price_position',
+            'autocorr',
+        ]],
+        'use_prices': [False],
+        'trend_length': [3,10]
     })
 ]
 
-BACKTEST_WINDOW = 5
-MIN_SCORE_THRESH = 10
-N_CHECKS = 5
+BACKTEST_WINDOW = 1
+MIN_SCORE_THRESH = -np.inf
+N_CHECKS = 0
