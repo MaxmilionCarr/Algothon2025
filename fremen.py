@@ -12,6 +12,11 @@ nDays = 0
 best_strategy_cache = {}
 cached_features = {}
 
+def get_most_volatile_instruments(prices: np.ndarray, window=20, top_k=5):
+    returns = np.diff(np.log(prices[:, -window:]), axis=1)
+    vol = np.std(returns, axis=1)
+    return np.argsort(vol)[-top_k:]
+
 def getMyPosition(prcSoFar):
     global currentPos, N_INST, nDays
 
@@ -21,6 +26,38 @@ def getMyPosition(prcSoFar):
 
     for inst in range(N_INST):
         currentPos[inst] = int(getPos(prcSoFar, inst))
+    # Volatile instrument logic with backtested parameter selection
+    top_volatile = get_most_volatile_instruments(prcSoFar, window=20, top_k=5)
+
+    for inst in top_volatile:
+        best_score = -np.inf
+        best_signal = 0
+
+        for strategy_fn, param_grid in candidates:
+            if strategy_fn.__name__ != "strategy_volatility":
+                continue
+
+            param_names = list(param_grid.keys())
+            combos = list(itertools.product(*[param_grid[k] for k in param_names]))
+
+            for combo in combos:
+                params = dict(zip(param_names, combo))
+                params["self"] = inst
+
+                if nDays < params["vol_window"] + 1:
+                    continue
+
+                score, signal = backtest(prcSoFar, strategy_fn, params, BACKTEST_WINDOW, inst)
+
+                if score > best_score:
+                    best_score = score
+                    best_signal = signal
+
+        if abs(best_signal) > 1e-6:
+            current_price = prcSoFar[inst, -1]
+            volatile_target_pos = (POSLIMIT / current_price) * best_signal
+            currentPos[inst] += int(volatile_target_pos)
+
     return currentPos
 
 def getPos(prcSoFar, inst):
@@ -77,7 +114,9 @@ def getPos(prcSoFar, inst):
 
 def preCalcs(prcSoFar, t):
     global cached_features, candidates
-
+    if t in cached_features:
+        return
+    
     N = prcSoFar.shape[0]
 
     cached_features[t] = {}
@@ -93,7 +132,17 @@ def preCalcs(prcSoFar, t):
         slopes = []
         for j in range(N):
             p = prcSoFar[j, t - trend_len + 1 : t + 1]
-            slopes.append(np.polyfit(np.arange(len(p)), np.log(p), 1)[0])
+
+            # Guard against invalid values
+            if len(p) < 2 or np.any(p <= 0) or np.any(np.isnan(p)) or np.allclose(p, p[0]):
+                slope = 0.0
+            else:
+                try:
+                    slope = np.polyfit(np.arange(len(p)), np.log(p), 1)[0]
+                except np.linalg.LinAlgError:
+                    slope = 0.0
+
+            slopes.append(slope)
         cached_features[t][f'avg_market_trend_{trend_len}'] = np.mean(slopes)
 
 def backtest(prcSoFar, strategy_fn, params, backtest_window, inst):
@@ -191,6 +240,24 @@ def extract_features(prices, feature_set):
 
     return features
 
+def strategy_volatility(prcSoFar, t, params):
+    inst = params["self"]
+    window = params["vol_window"]
+    ret_thresh = params["return_threshold"]
+
+    prices = prcSoFar[inst, t - window + 1 : t + 1]
+    if len(prices) < window or np.any(prices <= 0):
+        return 0
+
+    log_returns = np.diff(np.log(prices))
+    momentum = np.sum(log_returns)
+
+    if abs(momentum) < ret_thresh:
+        return 0
+
+    return np.clip(momentum / ret_thresh, -1, 1)
+
+
 def strategy_1(prcSoFar, t, params):
 
     inst = params['self']
@@ -267,7 +334,7 @@ def strategy_1(prcSoFar, t, params):
         else:
             return 0
 
-    model = LogisticRegression(solver='liblinear')
+    model = LogisticRegression(solver='lbfgs', max_iter=1000)
     model.fit(X, Y)
 
     x_today = extract_features(y_prices, feature_set)
@@ -312,10 +379,17 @@ candidates = [
             'autocorr',
         ]],
         'use_prices': [False],
-        'trend_length': [3,10]
-    })
-]
+        'trend_length': [3, 10]
+    }),
+    (strategy_volatility, {
+    'vol_window': [5, 10, 15, 20],
+    'return_threshold': [0.01, 0.015, 0.02]
+    }),
+    ]
 
-BACKTEST_WINDOW = 1
+
+
+
+BACKTEST_WINDOW = 6
 MIN_SCORE_THRESH = -np.inf
 N_CHECKS = 0
