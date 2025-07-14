@@ -382,14 +382,20 @@ candidates = [
         'trend_length': [3, 10]
     }),
     (strategy_volatility, {
-    'vol_window': [5, 10, 15, 20],
+    'vol_window': [10, 15, 20],
     'return_threshold': [0.01, 0.015, 0.02]
     }),
     ]
 
+# Best so far
+#    (strategy_volatility, {
+#    'vol_window': [5, 10, 15, 20],
+#    'return_threshold': [0.01, 0.015, 0.02]
+#    }),
 
 
-
+# Best so far 
+# BACKTEST_WINDOW = 6
 BACKTEST_WINDOW = 6
 MIN_SCORE_THRESH = -np.inf
 N_CHECKS = 0
