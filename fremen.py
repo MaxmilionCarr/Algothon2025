@@ -12,16 +12,35 @@ nDays = 0
 best_strategy_cache = {}
 cached_features = {}
 current_value = 0.0
+previous_pos = np.zeros(N_INST)
+
+def update_current_value(prcSoFar):
+    global current_value, previous_pos
+
+    if prcSoFar.shape[1] < 2:
+        return
+
+    today_prices = prcSoFar[:, -1]
+    yesterday_prices = prcSoFar[:, -2]
+
+    # Compute position change and trade volume
+    delta_pos = currentPos - previous_pos
+    trade_volume = np.abs(delta_pos) * today_prices
+    transaction_costs = np.sum(trade_volume) * COMMRATE
+
+    # PnL: Holding return + transaction cost
+    pnl_today = np.sum(previous_pos * (today_prices - yesterday_prices)) - transaction_costs
+
+    current_value += pnl_today
+    previous_pos = currentPos.copy()
+
 
 # Before : min_thresh=0.003, max_thresh=0.07, min_pnl=-6000, max_pnl=10000
-def dynamic_vol_threshold(value, min_thresh=0.002, max_thresh=0.03, min_value=-3_000, max_value=10_000):
+def dynamic_vol_threshold(value, min_thresh=0.002, max_thresh=0.07, min_value=-4_000, max_value=12_000):
     print(value)
     value = np.clip(value, min_value, max_value)
     ratio = (value - min_value) / (max_value - min_value)
     return max_thresh - (max_thresh - min_thresh) * ratio
-
-
-
 
 def get_most_volatile_instruments(prices: np.ndarray, window=10, top_k=5, min_vol_threshold=0.015):
     if prices.shape[1] < window + 1:
@@ -47,7 +66,7 @@ def get_most_volatile_instruments(prices: np.ndarray, window=10, top_k=5, min_vo
 
 
 def getMyPosition(prcSoFar):
-    global currentPos, N_INST, nDays
+    global currentPos, N_INST, nDays, previous_pos
     feature_cache.clear()
 
     N_INST, nDays = prcSoFar.shape
@@ -91,6 +110,8 @@ def getMyPosition(prcSoFar):
             current_price = prcSoFar[inst, -1]
             volatile_target_pos = (POSLIMIT / current_price) * best_signal
             currentPos[inst] += int(volatile_target_pos)
+    
+    update_current_value(prcSoFar)
 
     return currentPos
 
@@ -183,7 +204,7 @@ def preCalcs(prcSoFar, t):
         cached_features[t][f'avg_market_trend_{trend_len}'] = np.mean(slopes)
 
 def backtest(prcSoFar, strategy_fn, params, backtest_window, inst):
-    global POSLIMIT, COMMRATE, nDays, current_value
+    global POSLIMIT, COMMRATE, nDays
     params['self'] = inst
 
     price_series = prcSoFar[inst]
@@ -218,7 +239,6 @@ def backtest(prcSoFar, strategy_fn, params, backtest_window, inst):
     mean_pl = pl_arr.mean()
     std_pl = pl_arr.std()
     score = mean_pl - 0.1 * std_pl
-    current_value = np.sum(currentPos * prcSoFar[:, -1])
 
     if N_CHECKS > 0:
         for i in range(N_CHECKS):
