@@ -3,6 +3,9 @@
 import numpy as np
 import pandas as pd
 from fremen import getMyPosition as getPosition
+import time
+
+start_time = time.time()
 
 nInst = 0
 nt = 0
@@ -11,7 +14,7 @@ dlrPosLimit = 10000
 
 def loadPrices(fn):
     global nt, nInst
-    df=pd.read_csv(fn, sep='\s+', header=None, index_col=None)
+    df=pd.read_csv(fn, sep=r'\s+', header=None, index_col=None)
     (nt,nInst) = df.shape
     return (df.values).T
 
@@ -64,7 +67,7 @@ def calcPL(prcHist, numTestDays):
 
 
 
-(meanpl, ret, plstd, sharpe, dvol) = calcPL(prcAll,750)
+(meanpl, ret, plstd, sharpe, dvol) = calcPL(prcAll,1000)
 score = meanpl - 0.1*plstd
 print ("=====")
 print ("mean(PL): %.1lf" % meanpl)
@@ -74,3 +77,4 @@ print ("annSharpe(PL): %.2lf " % sharpe)
 print ("totDvolume: %.0lf " % dvol)
 print ("Score: %.2lf" % score)
 
+print("--- %s seconds ---" % (time.time() - start_time))
