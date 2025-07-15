@@ -11,6 +11,17 @@ currentPos = np.zeros(N_INST)
 nDays = 0
 best_strategy_cache = {}
 cached_features = {}
+current_value = 0.0
+
+# Before : min_thresh=0.003, max_thresh=0.07, min_pnl=-6000, max_pnl=10000
+def dynamic_vol_threshold(value, min_thresh=0.002, max_thresh=0.03, min_value=-3_000, max_value=10_000):
+    print(value)
+    value = np.clip(value, min_value, max_value)
+    ratio = (value - min_value) / (max_value - min_value)
+    return max_thresh - (max_thresh - min_thresh) * ratio
+
+
+
 
 def get_most_volatile_instruments(prices: np.ndarray, window=10, top_k=5, min_vol_threshold=0.015):
     if prices.shape[1] < window + 1:
@@ -46,7 +57,9 @@ def getMyPosition(prcSoFar):
     for inst in range(N_INST):
         currentPos[inst] = int(getPos(prcSoFar, inst))
     # Volatile instrument logic with backtested parameter selection
-    top_volatile = get_most_volatile_instruments(prcSoFar, window=20, top_k=10, min_vol_threshold=0.025)
+    threshold = dynamic_vol_threshold(current_value)
+    top_volatile = get_most_volatile_instruments(prcSoFar, window=20, top_k=5, min_vol_threshold=threshold)
+
 
     for inst in top_volatile:
         best_score = -np.inf
@@ -170,7 +183,7 @@ def preCalcs(prcSoFar, t):
         cached_features[t][f'avg_market_trend_{trend_len}'] = np.mean(slopes)
 
 def backtest(prcSoFar, strategy_fn, params, backtest_window, inst):
-    global POSLIMIT, COMMRATE, nDays
+    global POSLIMIT, COMMRATE, nDays, current_value
     params['self'] = inst
 
     price_series = prcSoFar[inst]
@@ -205,6 +218,7 @@ def backtest(prcSoFar, strategy_fn, params, backtest_window, inst):
     mean_pl = pl_arr.mean()
     std_pl = pl_arr.std()
     score = mean_pl - 0.1 * std_pl
+    current_value = np.sum(currentPos * prcSoFar[:, -1])
 
     if N_CHECKS > 0:
         for i in range(N_CHECKS):
