@@ -13,6 +13,7 @@ best_strategy_cache = {}
 cached_features = {}
 current_value = 0.0
 previous_pos = np.zeros(N_INST)
+SMOOTHING_ALPHA = 0.6
 
 def update_current_value(prcSoFar):
     global current_value, previous_pos
@@ -34,6 +35,17 @@ def update_current_value(prcSoFar):
     current_value += pnl_today
     previous_pos = currentPos.copy()
 
+def dynamic_smoothing_alpha(prices, window=20, min_alpha=0.2, max_alpha=0.5):
+    if prices.shape[1] < window + 1:
+        return max_alpha  # Conservative default early
+
+    log_prices = np.log(prices[:, -window:] + 1e-8)
+    returns = np.diff(log_prices, axis=1)
+
+    market_vol = np.nanmean(np.std(returns, axis=1))
+    # Normalize market_vol to [0, 1] range based on reasonable min/max bounds
+    norm_vol = np.clip((market_vol - 0.005) / (0.05 - 0.005), 0, 1)
+    return max_alpha - norm_vol * (max_alpha - min_alpha)
 
 # Before : min_thresh=0.003, max_thresh=0.07, min_pnl=-6000, max_pnl=10000
 def dynamic_vol_threshold(value, min_thresh=0.002, max_thresh=0.07, min_value=-4_000, max_value=12_000):
@@ -66,12 +78,14 @@ def get_most_volatile_instruments(prices: np.ndarray, window=10, top_k=5, min_vo
 
 
 def getMyPosition(prcSoFar):
-    global currentPos, N_INST, nDays, previous_pos
+    global currentPos, N_INST, nDays, previous_pos, SMOOTHING_ALPHA
     feature_cache.clear()
 
     N_INST, nDays = prcSoFar.shape
 
     preCalcs(prcSoFar, nDays)
+
+    SMOOTHING_ALPHA = dynamic_smoothing_alpha(prcSoFar)
 
     for inst in range(N_INST):
         currentPos[inst] = int(getPos(prcSoFar, inst))
@@ -153,7 +167,9 @@ def getPos(prcSoFar, inst):
     best_params['self'] = inst
     best_signal = best_strategy(prcSoFar, nDays - 1, best_params)
     best_signal = np.clip(best_signal, -1, 1)
-    target_pos = (POSLIMIT / current_price) * best_signal
+    raw_target_pos = (POSLIMIT / current_price) * best_signal
+    target_pos = SMOOTHING_ALPHA * prev_pos + (1 - SMOOTHING_ALPHA) * raw_target_pos
+
 
     if abs(best_signal) > 1e-6:
         if np.sign(target_pos) != np.sign(prev_pos):
