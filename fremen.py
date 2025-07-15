@@ -12,13 +12,32 @@ nDays = 0
 best_strategy_cache = {}
 cached_features = {}
 
-def get_most_volatile_instruments(prices: np.ndarray, window=20, top_k=5):
-    returns = np.diff(np.log(prices[:, -window:]), axis=1)
+def get_most_volatile_instruments(prices: np.ndarray, window=10, top_k=5, min_vol_threshold=0.015):
+    if prices.shape[1] < window + 1:
+        return []
+
+    log_prices = np.log(prices[:, -window:] + 1e-8)
+    returns = np.diff(log_prices, axis=1)
+
+    # Handle NaNs and check valid shape
+    if returns.shape[1] < 2:
+        return []
+
+    returns = np.where(np.isfinite(returns), returns, 0)
     vol = np.std(returns, axis=1)
-    return np.argsort(vol)[-top_k:]
+
+    # Filter instruments with volatility above threshold
+    valid_indices = np.where(vol >= min_vol_threshold)[0]
+    if len(valid_indices) == 0:
+        return []
+
+    sorted_by_vol = valid_indices[np.argsort(vol[valid_indices])]
+    return sorted_by_vol[-top_k:]
+
 
 def getMyPosition(prcSoFar):
     global currentPos, N_INST, nDays
+    feature_cache.clear()
 
     N_INST, nDays = prcSoFar.shape
 
@@ -27,21 +46,23 @@ def getMyPosition(prcSoFar):
     for inst in range(N_INST):
         currentPos[inst] = int(getPos(prcSoFar, inst))
     # Volatile instrument logic with backtested parameter selection
-    top_volatile = get_most_volatile_instruments(prcSoFar, window=20, top_k=5)
+    top_volatile = get_most_volatile_instruments(prcSoFar, window=20, top_k=10, min_vol_threshold=0.025)
 
     for inst in top_volatile:
         best_score = -np.inf
         best_signal = 0
 
-        for strategy_fn, param_grid in candidates:
+        volatility_candidates = [
+            (fn, grid) for (fn, grid) in candidates if fn.__name__ == "strategy_volatility"
+        ]
+
+
+        for strategy_fn, param_grid in volatility_candidates:
             if strategy_fn.__name__ != "strategy_volatility":
                 continue
 
-            param_names = list(param_grid.keys())
-            combos = list(itertools.product(*[param_grid[k] for k in param_names]))
-
-            for combo in combos:
-                params = dict(zip(param_names, combo))
+            for combo in param_grid_cache[strategy_fn]:
+                params = dict(zip(param_grid.keys(), combo))
                 params["self"] = inst
 
                 if nDays < params["vol_window"] + 1:
@@ -76,11 +97,9 @@ def getPos(prcSoFar, inst):
         best_score = -np.inf
 
         for strategy_fn, param_grid in candidates:
-            param_names = list(param_grid.keys())
-            param_combos = list(itertools.product(*[param_grid[k] for k in param_names]))
 
-            for combo in param_combos:
-                params = dict(zip(param_names, combo))
+            for combo in param_grid_cache[strategy_fn]:
+                params = dict(zip(param_grid.keys(), combo))
                 score, _ = backtest(prcSoFar, strategy_fn, params, BACKTEST_WINDOW, inst)
 
                 if score > best_score:
@@ -114,8 +133,13 @@ def getPos(prcSoFar, inst):
 
 def preCalcs(prcSoFar, t):
     global cached_features, candidates
-    if t in cached_features:
+    if t in cached_features and all(
+        f'avg_market_trend_{trend_len}' in cached_features[t] 
+        for (_, grid) in candidates 
+        for trend_len in grid.get('trend_length', [])
+    ):
         return
+
     
     N = prcSoFar.shape[0]
 
@@ -218,7 +242,14 @@ def backtest(prcSoFar, strategy_fn, params, backtest_window, inst):
     latest_signal = np.clip(strategy_fn(prcSoFar, nDays - 1, params), -1, 1)
     return score, latest_signal
 
+feature_cache = {}
+
 def extract_features(prices, feature_set):
+
+    key = (tuple(np.round(prices, 6)), tuple(feature_set))
+    if key in feature_cache:
+        return feature_cache[key]
+    
     features = []
     log_returns = np.diff(np.log(prices))
 
@@ -238,6 +269,7 @@ def extract_features(prices, feature_set):
             else:
                 features.append(0.0)
 
+    feature_cache[key] = features
     return features
 
 def strategy_volatility(prcSoFar, t, params):
@@ -387,9 +419,16 @@ candidates = [
     }),
     ]
 
+# Precomputed parameter combinations for each strategy
+param_grid_cache = {
+    fn: list(itertools.product(*[grid[k] for k in grid]))
+    for fn, grid in candidates
+}
+
+
 # Best so far
 #    (strategy_volatility, {
-#    'vol_window': [5, 10, 15, 20],
+#    'vol_window': [10, 15, 20],
 #    'return_threshold': [0.01, 0.015, 0.02]
 #    }),
 
@@ -399,3 +438,5 @@ candidates = [
 BACKTEST_WINDOW = 6
 MIN_SCORE_THRESH = -np.inf
 N_CHECKS = 0
+
+# Best so far Score 43.44
