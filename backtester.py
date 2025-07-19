@@ -28,7 +28,7 @@ PLOT_COLORS: Dict[str, str] = {
     "sharpe_change": "#d62728",
 }
 
-default_strategy_filepath: str = "./fremen.py"
+default_strategy_filepath: str = "./main.py"
 default_strategy_function_name: str = "getMyPosition"
 strategy_file_not_found_message: str = "Strategy file not found"
 could_not_load_spec_message: str = "Could not load spec for module from strategy file"
@@ -109,7 +109,7 @@ class Params:
         strategy_function_name: str = default_strategy_function_name,
         strategy_function: FunctionType | None = None,
         start_day: int = 1,
-        end_day: int = 750,
+        end_day: int = 1000,
         enable_commission: bool = True,
         graphs: List[str] = ["cum-pnl", "sharpe-heat-map", "daily-pnl"],
         prices_filepath: str = "./prices.txt",
