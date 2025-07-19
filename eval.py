@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from fremen import getMyPosition as getPosition
+from main import getMyPosition as getPosition
 import time
 
 start_time = time.time()
