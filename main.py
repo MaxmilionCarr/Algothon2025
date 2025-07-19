@@ -23,6 +23,7 @@ trend = 0.0                     # Average trend across all instruments
 # === Strategy Parameters ===
 LOOKBACK = 3                    # Number of previous prices to fit the logistic regression model to
 TREND_LENGTH = 2                # Number of previous prices used to calculate trend
+MIN_PROB = 0.5                  # Minimum modelled probability required for a trade (note: <0.5 will bias towards buy trades)
 
 def getMyPosition(prcSoFar):
     """
@@ -143,9 +144,9 @@ def getPos(prcSoFar, inst):
 
     # If predicted change is against the trend, signal is 0
     signal = 0
-    if p_buy > 0.5 and trend > 0:
+    if p_buy > MIN_PROB and trend > 0:
         signal = 1
-    elif p_sell > 0.5 and trend < 0:
+    elif p_sell > MIN_PROB and trend < 0:
         signal = -1
     target_pos = max_pos * signal # Take maximum position in signal direction
 
