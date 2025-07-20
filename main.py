@@ -5,7 +5,7 @@ Created by team 'Fremen' for the UNSW FinTechSoc x Susquehanna Algothon 2025
 '''
 # === Import Modules === 
 import numpy as np
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression 
 from sklearn.preprocessing import StandardScaler
 import warnings
 from sklearn.exceptions import ConvergenceWarning
@@ -65,7 +65,7 @@ def getTrend(prcSoFar):
     # log of the most recent n prices, as specified by TREND_LENGTH
     slopes = []
     for j in range(N_INST):
-        p = prcSoFar[j, nDays - TREND_LENGTH : nDays + 1]
+        p = prcSoFar[j, nDays - TREND_LENGTH : nDays]
         try:
             slope = np.polyfit(np.arange(len(p)), np.log(p), 1)[0]
             slopes.append(slope)
@@ -118,14 +118,14 @@ def getPos(prcSoFar, inst):
 
     # If only one outcome in training data, hold current position
     if len(np.unique(Y)) == 1:
-        return int(np.sign(prev_pos) * min(abs(prev_pos), max_pos)) # Scale down to $10k size if needed
+        return int(np.sign(prev_pos) * max_pos) # Scale down to $10k size if needed
 
     # === Scale & Fit  Model ===
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    model = LogisticRegression(solver='lbfgs', max_iter=2000)
+    model = LogisticRegression(solver='lbfgs', max_iter=5000)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=ConvergenceWarning)
         model.fit(X_scaled, Y)
@@ -139,19 +139,27 @@ def getPos(prcSoFar, inst):
     # Predict one out-of-sample outcome
     probs = model.predict_proba(x_today)[0]
 
-    p_buy = probs[1]    # Probability of positive change
-    p_sell = probs[0]   # Probability of negative change
+    try:
+        p_buy = probs[model.classes_ == 1][0]   # Probability of positive change
+    except:
+        p_buy = 0
+    
+    try:
+        p_sell = probs[model.classes_ == -1][0] # Probability of negative change
+    except:
+        p_sell = 0
 
-    # If predicted change is against the trend, signal is 0
+    # If predicted change is against the trend, signal is the previous position
     signal = 0
     if p_buy > MIN_PROB and trend > 0:
         signal = 1
     elif p_sell > MIN_PROB and trend < 0:
         signal = -1
+    elif np.sign(prev_pos) == np.sign(trend):
+        signal = np.sign(prev_pos)
+    else:
+        signal = 0
+
     target_pos = max_pos * signal # Take maximum position in signal direction
 
-    # If no signal, hold current position, otherwise return target position
-    if abs(signal) <= 1e-6:
-        return int(np.sign(prev_pos) * min(abs(prev_pos), max_pos))
-    else:
-        return int(target_pos)
+    return int(target_pos)
