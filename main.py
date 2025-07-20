@@ -140,12 +140,12 @@ def getPos(prcSoFar, inst):
     probs = model.predict_proba(x_today)[0]
 
     try:
-        p_buy = probs[model.classes_ == 1][0]   # Probability of positive change
+        p_buy = probs[model.classes_ == 1]   # Probability of positive change
     except:
         p_buy = 0
     
     try:
-        p_sell = probs[model.classes_ == -1][0] # Probability of negative change
+        p_sell = probs[model.classes_ == -1] # Probability of negative change
     except:
         p_sell = 0
 
