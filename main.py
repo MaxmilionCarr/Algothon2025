@@ -9,9 +9,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 import warnings
 from sklearn.exceptions import ConvergenceWarning
+from sklearn.metrics import log_loss
 
 # === Global Constants ===
-COMMRATE = 0.0005               # Commission rate per trade (5bps)
+COMMRATE = 0.000                # Commission rate per trade (5bps)
 POSLIMIT = 10000                # Maximum position value per instrument ($)
 N_INST = 50                     # Number of instruments
 
@@ -35,14 +36,14 @@ def getMyPosition(prcSoFar):
     Returns:
         np.array: 1D array of 50 desired positions
     """
-    global currentPos, nDays, trend
+    global currentPos, nDays
 
     _, nDays = prcSoFar.shape # Get current day index
 
-    if nDays < max(TREND_LENGTH,LOOKBACK):
+    if nDays < max(LOOKBACK,TREND_LENGTH):
         return currentPos # Return empty vector if not enough prices exist for calculations
 
-    trend = getTrend(prcSoFar) # Get current trend across market once per day
+    preCalcs(prcSoFar) # Get current trend across market once per day
 
     # Iterate over each instrument and compute the optimal position
     for inst in range(N_INST):
@@ -50,17 +51,11 @@ def getMyPosition(prcSoFar):
 
     return currentPos
 
-def getTrend(prcSoFar):
+def preCalcs(prcSoFar):
     """
-    Compute the current average of all instruments' trends.
-    The trend is defined as the slope of a linear fit to the log prices of an instrument.
 
-    Parameters:
-        prcSoFar (np.array): Array of historical prices with shape (N_INST, ndays)
-
-    Returns:
-        float: Average trend accross instruments
     """
+    global trend, volatility, last_trend, updated
     # Iterate over each insturment, and in a vector, store the slope of a linear fit to the 
     # log of the most recent n prices, as specified by TREND_LENGTH
     slopes = []
@@ -73,8 +68,6 @@ def getTrend(prcSoFar):
             pass # Skip instruments with invalid slopes
 
     trend = np.mean(slopes) # Calculate the average of all instruments' slopes
-
-    return trend
 
 def getPos(prcSoFar, inst):
     """
@@ -103,11 +96,12 @@ def getPos(prcSoFar, inst):
 
         # Model will be trained based on previous price change of instrument
         change = (prcSoFar[inst, i + 1]) - (prcSoFar[inst, i])
-        if change > COMMRATE:
+        if change >= COMMRATE:
             Y.append(1)             # Positive change is outcome 1
         elif change < -COMMRATE:
-            Y.append(-1)            # Negative change is outcome -1
+            Y.append(0)            # Negative change is outcome -1
         else:
+            # print("FUCKFUCKFUCKFUCKFUCKFUCKFUCK")
             Y.append(0)             # Absolute change < commrate is outcome 0
 
         row = [prcSoFar[j, i] for j in range(N_INST)]
@@ -125,7 +119,9 @@ def getPos(prcSoFar, inst):
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    model = LogisticRegression(solver='lbfgs', max_iter=5000)
+    #{'newton-cholesky 86.2', 'lbfgs 86.2', 'liblinear 90.73', 'sag 88.24', 'saga 87.79', 'newton-cg 86.20'}
+
+    model = LogisticRegression(solver='liblinear', max_iter=1000)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=ConvergenceWarning)
         model.fit(X_scaled, Y)
@@ -145,7 +141,7 @@ def getPos(prcSoFar, inst):
         p_buy = 0
     
     try:
-        p_sell = probs[model.classes_ == -1] # Probability of negative change
+        p_sell = probs[model.classes_ == 0] # Probability of negative change
     except:
         p_sell = 0
 
@@ -161,5 +157,4 @@ def getPos(prcSoFar, inst):
         signal = 0
 
     target_pos = max_pos * signal # Take maximum position in signal direction
-
     return int(target_pos)
