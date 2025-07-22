@@ -9,7 +9,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 import warnings
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.metrics import log_loss
 
 # === Global Constants ===
 COMMRATE = 0.000                # Commission rate per trade (5bps)
