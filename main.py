@@ -24,7 +24,7 @@ historical_break_scores = np.zeros(N_INST)
 
 
 # === Strategy Parameters ===
-LOOKBACK = 4                    # Number of previous prices to fit the logistic regression model to
+LOOKBACK = 5                    # Number of previous prices to fit the logistic regression model to
 TREND_LENGTH = 3                # Number of previous prices used to calculate trend
 THRESH_SCORE = 1                # Threshold for excluding instruments with unstable price behavior (based on trend break history)
 VOL_WINDOW = 20                 # Number of days used in calculating rolling volatility for each instrument
@@ -33,16 +33,16 @@ VOL_MULTIPLIER = 1.55           # Multiplier applied to average market volatilit
 ALPHA = 0.4                     # Smoothing factor for exponentially weighted moving average of trend breaks
 
 # === Best Parameters ===
-# LOOKBACK = 4                    
+# LOOKBACK = 5                    
 # TREND_LENGTH = 3                
 # THRESH_SCORE = 1                
 # VOL_WINDOW = 20               
 # TREND_WINDOW = 20               
 # VOL_MULTIPLIER = 1.55           
 # ALPHA = 0.4  
-# Score (Last 500 Days): 23.17   
-# Score (Middle 500 Days): -4.59
-# Score (First 500 Days): 16.72       
+# Score (First 500 Days): 22.03  
+# Score (Middle 500 Days): 7.64
+# Score (Last 500 Days): 24.15       
 
 def update_historical_break(inst, trend_break, alpha=ALPHA):
     """

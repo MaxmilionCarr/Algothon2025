@@ -66,6 +66,7 @@ def calcPL(prcHist, startTestDays, endTestDays):
 
 
 timebars = [(1, 500), (500, 1000), (1000, 1500)]
+scores = []
 for times in timebars:
     (meanpl, ret, plstd, sharpe, dvol) = calcPL(prcAll, times[0], times[1])
     score = meanpl - 0.1*plstd
@@ -76,6 +77,12 @@ for times in timebars:
     print ("annSharpe(PL): %.2lf " % sharpe)
     print ("totDvolume: %.0lf " % dvol)
     print ("Score: %.2lf" % score)
+    scores.append(score)
     time.sleep(5)
+
+print ("=====")
+print ("Score 1: %.2lf" % scores[0])
+print ("Score 2: %.2lf" % scores[1])
+print ("Score 3: %.2lf" % scores[2])
 
 print("--- %s seconds ---" % (time.time() - start_time))
