@@ -76,6 +76,6 @@ for times in timebars:
     print ("annSharpe(PL): %.2lf " % sharpe)
     print ("totDvolume: %.0lf " % dvol)
     print ("Score: %.2lf" % score)
-    time.sleep(100)
+    time.sleep(5)
 
 print("--- %s seconds ---" % (time.time() - start_time))
