@@ -5,13 +5,13 @@ Created by team 'Fremen' for the UNSW FinTechSoc x Susquehanna Algothon 2025
 '''
 # === Import Modules === 
 import numpy as np
-from sklearn.linear_model import LogisticRegression 
+from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 import warnings
 from sklearn.exceptions import ConvergenceWarning
 
 # === Global Constants ===
-COMMRATE = 0.000                # Commission rate per trade (5bps)
+COMMRATE = 0.0005               # Commission rate per trade (5bps)
 POSLIMIT = 10000                # Maximum position value per instrument ($)
 N_INST = 50                     # Number of instruments
 
@@ -23,7 +23,6 @@ trend = 0.0                     # Average trend across all instruments
 # === Strategy Parameters ===
 LOOKBACK = 3                    # Number of previous prices to fit the logistic regression model to
 TREND_LENGTH = 2                # Number of previous prices used to calculate trend
-MIN_PROB = 0.5                  # Minimum modelled probability required for a trade (note: <0.5 will bias towards buy trades)
 
 def getMyPosition(prcSoFar):
     """
@@ -35,14 +34,14 @@ def getMyPosition(prcSoFar):
     Returns:
         np.array: 1D array of 50 desired positions
     """
-    global currentPos, nDays
+    global currentPos, nDays, trend
 
     _, nDays = prcSoFar.shape # Get current day index
 
-    if nDays < max(LOOKBACK,TREND_LENGTH):
+    if nDays < max(TREND_LENGTH,LOOKBACK):
         return currentPos # Return empty vector if not enough prices exist for calculations
 
-    preCalcs(prcSoFar) # Get current trend across market once per day
+    trend = getTrend(prcSoFar) # Get current trend across market once per day
 
     # Iterate over each instrument and compute the optimal position
     for inst in range(N_INST):
@@ -50,16 +49,22 @@ def getMyPosition(prcSoFar):
 
     return currentPos
 
-def preCalcs(prcSoFar):
+def getTrend(prcSoFar):
     """
+    Compute the current average of all instruments' trends.
+    The trend is defined as the slope of a linear fit to the log prices of an instrument.
 
+    Parameters:
+        prcSoFar (np.array): Array of historical prices with shape (N_INST, ndays)
+
+    Returns:
+        float: Average trend accross instruments
     """
-    global trend, volatility, last_trend, updated
     # Iterate over each insturment, and in a vector, store the slope of a linear fit to the 
     # log of the most recent n prices, as specified by TREND_LENGTH
     slopes = []
     for j in range(N_INST):
-        p = prcSoFar[j, nDays - TREND_LENGTH : nDays]
+        p = prcSoFar[j, nDays - TREND_LENGTH : nDays + 1]
         try:
             slope = np.polyfit(np.arange(len(p)), np.log(p), 1)[0]
             slopes.append(slope)
@@ -67,6 +72,8 @@ def preCalcs(prcSoFar):
             pass # Skip instruments with invalid slopes
 
     trend = np.mean(slopes) # Calculate the average of all instruments' slopes
+
+    return trend
 
 def getPos(prcSoFar, inst):
     """
@@ -95,12 +102,11 @@ def getPos(prcSoFar, inst):
 
         # Model will be trained based on previous price change of instrument
         change = (prcSoFar[inst, i + 1]) - (prcSoFar[inst, i])
-        if change >= COMMRATE:
+        if change > COMMRATE:
             Y.append(1)             # Positive change is outcome 1
         elif change < -COMMRATE:
-            Y.append(0)            # Negative change is outcome -1
+            Y.append(-1)            # Negative change is outcome -1
         else:
-            # print("FUCKFUCKFUCKFUCKFUCKFUCKFUCK")
             Y.append(0)             # Absolute change < commrate is outcome 0
 
         row = [prcSoFar[j, i] for j in range(N_INST)]
@@ -111,16 +117,14 @@ def getPos(prcSoFar, inst):
 
     # If only one outcome in training data, hold current position
     if len(np.unique(Y)) == 1:
-        return int(np.sign(prev_pos) * max_pos) # Scale down to $10k size if needed
+        return int(np.sign(prev_pos) * min(abs(prev_pos), max_pos)) # Scale down to $10k size if needed
 
     # === Scale & Fit  Model ===
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    #{'newton-cholesky 86.2', 'lbfgs 86.2', 'liblinear 90.73', 'sag 88.24', 'saga 87.79', 'newton-cg 86.20'}
-
-    model = LogisticRegression(solver='liblinear', max_iter=1000)
+    model = LogisticRegression(solver='lbfgs', max_iter=2000)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=ConvergenceWarning)
         model.fit(X_scaled, Y)
@@ -134,26 +138,19 @@ def getPos(prcSoFar, inst):
     # Predict one out-of-sample outcome
     probs = model.predict_proba(x_today)[0]
 
-    try:
-        p_buy = probs[model.classes_ == 1]   # Probability of positive change
-    except:
-        p_buy = 0
-    
-    try:
-        p_sell = probs[model.classes_ == 0] # Probability of negative change
-    except:
-        p_sell = 0
+    p_buy = probs[1]    # Probability of positive change
+    p_sell = probs[0]   # Probability of negative change
 
-    # If predicted change is against the trend, signal is the previous position
+    # If predicted change is against the trend, signal is 0
     signal = 0
-    if p_buy > MIN_PROB and trend > 0:
+    if p_buy > 0.5 and trend > 0:
         signal = 1
-    elif p_sell > MIN_PROB and trend < 0:
+    elif p_sell > 0.5 and trend < 0:
         signal = -1
-    elif np.sign(prev_pos) == np.sign(trend):
-        signal = np.sign(prev_pos)
-    else:
-        signal = 0
-
     target_pos = max_pos * signal # Take maximum position in signal direction
-    return int(target_pos)
+
+    # If no signal, hold current position, otherwise return target position
+    if abs(signal) <= 1e-6:
+        return int(np.sign(prev_pos) * min(abs(prev_pos), max_pos))
+    else:
+        return int(target_pos)
