@@ -29,7 +29,7 @@ TREND_LENGTH = 3                # Number of previous prices used to calculate tr
 THRESH_SCORE = 1                # Threshold for excluding instruments with unstable price behavior (based on trend break history)
 VOL_WINDOW = 20                 # Number of days used in calculating rolling volatility for each instrument
 TREND_WINDOW = 20               # Number of days used in calculating rolling trend break for each instrument
-VOL_MULTIPLIER = 1.55            # Multiplier applied to average market volatility to define a dynamic exclusion threshold
+VOL_MULTIPLIER = 1.55           # Multiplier applied to average market volatility to define a dynamic exclusion threshold
 ALPHA = 0.4                     # Smoothing factor for exponentially weighted moving average of trend breaks
 
 # === Best Parameters ===
@@ -40,7 +40,9 @@ ALPHA = 0.4                     # Smoothing factor for exponentially weighted mo
 # TREND_WINDOW = 20               
 # VOL_MULTIPLIER = 1.55           
 # ALPHA = 0.4  
-# Score (Last 500 Days): 23.17          
+# Score (Last 500 Days): 23.17   
+# Score (Middle 500 Days): -4.59
+# Score (First 500 Days): 16.72       
 
 def update_historical_break(inst, trend_break, alpha=ALPHA):
     """
