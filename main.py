@@ -24,42 +24,40 @@ historical_break_scores = np.zeros(N_INST)
 
 
 # === Strategy Parameters ===
-LOOKBACK = 5                    # Number of previous prices to fit the logistic regression model to
-TREND_LENGTH = 3                # Number of previous prices used to calculate trend
-THRESH_SCORE = 1                # Threshold for excluding instruments with unstable price behavior (based on trend break history)
-VOL_WINDOW = 20                 # Number of days used in calculating rolling volatility for each instrument
-TREND_WINDOW = 20               # Number of days used in calculating rolling trend break for each instrument
-VOL_MULTIPLIER = 1.55           # Multiplier applied to average market volatility to define a dynamic exclusion threshold
-ALPHA = 0.4                     # Smoothing factor for exponentially weighted moving average of trend breaks
-
-# === Best Parameters ===
-# LOOKBACK = 5                    
-# TREND_LENGTH = 3                
-# THRESH_SCORE = 1                
-# VOL_WINDOW = 20               
-# TREND_WINDOW = 20               
-# VOL_MULTIPLIER = 1.55           
-# ALPHA = 0.4  
-# Score (First 500 Days): 22.03  
-# Score (Middle 500 Days): 7.64
-# Score (Last 500 Days): 24.15       
+LOOKBACK = 5                    # Number of previous prices to fit the logistic regression model to 
+TREND_LENGTH = 3                # Number of previous prices used to calculate trend 
+THRESH_SCORE = 0.85                # Threshold for excluding instruments with unstable price behavior (based on trend break history)
+VOL_WINDOW = 25                 # Number of days used in calculating rolling volatility for each instrument 
+TREND_WINDOW = 15               # Number of days used in calculating rolling trend break for each instrument 
+VOL_MULTIPLIER = 1.547            # Multiplier applied to average market volatility to define a dynamic exclusion threshold
+ALPHA = 0.35                     # Smoothing factor for trend breaks
 
 def update_historical_break(inst, trend_break, alpha=ALPHA):
-    """
-    Exponential moving average of trend break score for instrument.
-    """
+    '''
+    Applies a smoothing to the value of the trend break based on how the
+    instrument performed in the past 
+    Higher values prioritize recent trend breaks while lower values prioritize
+    historical trend breaks
+    '''
     global historical_break_scores
     historical_break_scores[inst] = (
         alpha * trend_break + (1 - alpha) * historical_break_scores[inst]
     )
 
 def compute_volatility(prices, window=VOL_WINDOW):
+    '''
+    Computes the volatility of an instrument over a certain window
+    '''
     if len(prices) < window + 1:
         return 0.0
     log_returns = np.diff(np.log(prices[-window-1:]))
     return np.std(log_returns)
 
 def compute_trend_break(prices, window=TREND_WINDOW):
+    '''
+    Applies a value to the difference between the actual value
+    of an instrument to the expectation
+    '''
     if len(prices) < window:
         return 0.0
     x = np.arange(window)
@@ -88,14 +86,18 @@ def getMyPosition(prcSoFar):
 
     trend = getTrend(prcSoFar)  # Market trend vector
 
-    # --- Dynamic volatility threshold ---
+    # === Dynamic volatility threshold ===
+
+    # Calculate the total volatility of all instruments
     vol_list = [
         compute_volatility(prcSoFar[j, :nDays])
         for j in range(N_INST)
         if nDays >= VOL_WINDOW + 1
     ]
     avg_vol = np.mean(vol_list)
-    vol_threshold = avg_vol * VOL_MULTIPLIER  # Dynamic limit
+    # Applies a multiplier to the average market volatility, any stock with
+    # a volatility higher than this will be tossed
+    vol_threshold = avg_vol * VOL_MULTIPLIER  
 
     for inst in range(N_INST):
         currentPos[inst] = int(getPos(prcSoFar, inst, vol_threshold))
@@ -149,11 +151,15 @@ def getPos(prcSoFar, inst, vol_threshold):
 
     prices = prcSoFar[inst, :nDays]
 
-    # --- Pre-checks: skip volatile or unstable instruments ---
+    # === Skip volatile or unstable instruments ===
     vol = compute_volatility(prices)
     trend_break = compute_trend_break(prices)
 
-    update_historical_break(inst, trend_break)  # Update EMA of break score
+    update_historical_break(inst, trend_break)
+
+    # Two checks to ensure highly volatile stocks (Based on market volatility) aren't traded
+    # Or instruments with a trend difference (scaled based on the alpha smoothing value) higher 
+    # than the threshold "trend break" score will not be traded
     if vol > vol_threshold or historical_break_scores[inst] > THRESH_SCORE:
         return int(np.sign(prev_pos) * min(abs(prev_pos), max_pos))
 
