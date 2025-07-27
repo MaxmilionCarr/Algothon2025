@@ -5,10 +5,6 @@ Created by team 'Fremen' for the UNSW FinTechSoc x Susquehanna Algothon 2025
 '''
 # === Import Modules === 
 import numpy as np
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
-import warnings
-from sklearn.exceptions import ConvergenceWarning
 
 # === Global Constants ===
 COMMRATE = 0.0005               # Commission rate per trade (5bps)
