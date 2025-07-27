@@ -1,4 +1,3 @@
-from os import wait3
 
 import pandas as pd
 from pandas import DataFrame
@@ -108,8 +107,8 @@ class Params:
         strategy_filepath: str = default_strategy_filepath,
         strategy_function_name: str = default_strategy_function_name,
         strategy_function: FunctionType | None = None,
-        start_day: int = 1,
-        end_day: int = 1000,
+        start_day: int = 1000,
+        end_day: int = 1500,
         enable_commission: bool = True,
         graphs: List[str] = ["cum-pnl", "sharpe-heat-map", "daily-pnl"],
         prices_filepath: str = "./prices.txt",
