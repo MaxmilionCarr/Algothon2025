@@ -65,7 +65,7 @@ def calcPL(prcHist, startTestDays, endTestDays):
     return (plmu, ret, plstd, annSharpe, totDVolume)
 
 
-timebars = [(1, 500), (501, 1000), (1001, 1500)]
+timebars = [(1001, 1500)]
 scores = []
 for times in timebars:
     (meanpl, ret, plstd, sharpe, dvol) = calcPL(prcAll, times[0], times[1])
