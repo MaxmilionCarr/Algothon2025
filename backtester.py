@@ -109,7 +109,7 @@ class Params:
         strategy_function_name: str = default_strategy_function_name,
         strategy_function: FunctionType | None = None,
         start_day: int = 1,
-        end_day: int = 1000,
+        end_day: int = 1500,
         enable_commission: bool = True,
         graphs: List[str] = ["cum-pnl", "sharpe-heat-map", "daily-pnl"],
         prices_filepath: str = "./prices.txt",
@@ -154,7 +154,7 @@ def parse_command_line_args() -> Params:
                     if (
                         params.start_day > params.end_day
                         or params.start_day < 1
-                        or params.end_day > 750
+                        or params.end_day > 1500
                     ):
                         raise Exception(usage_error)
             elif current_arg == "--disable-comms":

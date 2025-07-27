@@ -1,5 +1,5 @@
 '''
-Implements a logistic-regression-based trading strategy
+Implements a trend-following trading strategy
 
 Created by team 'Fremen' for the UNSW FinTechSoc x Susquehanna Algothon 2025
 '''
@@ -18,11 +18,71 @@ N_INST = 50                     # Number of instruments
 # === Global State ===
 currentPos = np.zeros(N_INST)   # Current position vector
 nDays = 0                       # Current day index
-trend = 0.0                     # Average trend across all instruments
+trend = []                      # Average trend across all instruments
+historical_break_scores = np.zeros(N_INST)
 
 # === Strategy Parameters ===
-LOOKBACK = 3                    # Number of previous prices to fit the logistic regression model to
-TREND_LENGTH = 2                # Number of previous prices used to calculate trend
+TREND_LENGTH = 10               # Number of previous prices used to calculate trend 
+THRESH_SCORE = 0.85             # Threshold for excluding instruments with unstable price behavior (based on trend break history)
+VOL_WINDOW = 25                 # Number of days used in calculating rolling volatility for each instrument 
+TREND_BREAK_WINDOW = 10         # Number of days used in calculating rolling trend break for each instrument 
+VOL_MULTIPLIER = 1.547          # Multiplier applied to average market volatility to define a dynamic exclusion threshold
+ALPHA = 0.35                    # Smoothing factor for trend breaks
+
+TREND_BREAK_WINDOW = TREND_LENGTH        #  <----- OPTIONAL
+
+exclude = {
+    0: False,
+    1: False,
+    2: False,
+    3: False,
+    4: False,
+    5: False,
+    6: False,
+    7: False,
+    8: False,
+    9: False,
+    10: False,
+    11: False,
+    12: False,
+    13: False,
+    14: False,
+    15: False,
+    16: False,
+    17: False,
+    18: False,
+    19: False,
+    20: False,
+    21: False,
+    22: False,
+    23: False,
+    24: False,
+    25: False,
+    26: False,
+    27: False,
+    28: False,
+    29: False,
+    30: False,
+    31: False,
+    32: False,
+    33: False,
+    34: False,
+    35: False,
+    36: False,
+    37: False,
+    38: False,
+    39: False,
+    40: False,
+    41: False,
+    42: False,
+    43: False,
+    44: False,
+    45: False,
+    46: False,
+    47: False,
+    48: False,
+    49: False,
+}
 
 def getMyPosition(prcSoFar):
     """
@@ -36,121 +96,113 @@ def getMyPosition(prcSoFar):
     """
     global currentPos, nDays, trend
 
-    _, nDays = prcSoFar.shape # Get current day index
+    _, nDays = prcSoFar.shape  # Get current day index
 
-    if nDays < max(TREND_LENGTH,LOOKBACK):
-        return currentPos # Return empty vector if not enough prices exist for calculations
+    if nDays < max(TREND_LENGTH, VOL_WINDOW + 1):
+        return currentPos  # Not enough data
 
-    trend = getTrend(prcSoFar) # Get current trend across market once per day
+    trend.append(getTrend(prcSoFar))
 
-    # Iterate over each instrument and compute the optimal position
+    # === Dynamic volatility threshold ===
+
+    # Calculate the total volatility of all instruments
+    vol_list = [
+        compute_volatility(prcSoFar[j, :nDays])
+        for j in range(N_INST)
+        if nDays >= VOL_WINDOW + 1
+    ]
+    avg_vol = np.mean(vol_list)
+    # Applies a multiplier to the average market volatility, any stock with
+    # a volatility higher than this will be tossed
+    vol_threshold = avg_vol * VOL_MULTIPLIER  
+
     for inst in range(N_INST):
-        currentPos[inst] = int(getPos(prcSoFar, inst))
+        currentPos[inst] = int(getPos(prcSoFar, inst, vol_threshold))
 
     return currentPos
 
+def update_historical_break(inst, trend_break):
+    '''
+    Applies a smoothing to the value of the trend break based on how the
+    instrument performed in the past 
+    Higher values prioritize recent trend breaks while lower values prioritize
+    historical trend breaks
+    '''
+    global historical_break_scores
+    historical_break_scores[inst] = (
+        ALPHA * trend_break + (1 - ALPHA) * historical_break_scores[inst]
+    )
+
+def compute_volatility(prices):
+    '''
+    Computes the volatility of an instrument over a certain window
+    '''
+    if len(prices) < VOL_WINDOW + 1:
+        return 0.0
+    log_returns = np.diff(np.log(prices[-VOL_WINDOW-1:]))
+    return np.std(log_returns)
+
+def compute_trend_break(prices):
+    '''
+    Applies a value to the difference between the actual value
+    of an instrument to the expectation
+    '''
+    if len(prices) < TREND_BREAK_WINDOW:
+        return 0.0
+    x = np.arange(TREND_BREAK_WINDOW)
+    y = np.log(prices[-TREND_BREAK_WINDOW:])
+    slope, intercept = np.polyfit(x, y, 1)
+    trend_line = slope * x + intercept
+    diffs = y - trend_line
+    return np.mean(np.abs(diffs)) / (np.std(y) + 1e-8)
+
 def getTrend(prcSoFar):
-    """
-    Compute the current average of all instruments' trends.
-    The trend is defined as the slope of a linear fit to the log prices of an instrument.
-
-    Parameters:
-        prcSoFar (np.array): Array of historical prices with shape (N_INST, ndays)
-
-    Returns:
-        float: Average trend accross instruments
-    """
-    # Iterate over each insturment, and in a vector, store the slope of a linear fit to the 
-    # log of the most recent n prices, as specified by TREND_LENGTH
     slopes = []
     for j in range(N_INST):
-        p = prcSoFar[j, nDays - TREND_LENGTH : nDays + 1]
-        try:
-            slope = np.polyfit(np.arange(len(p)), np.log(p), 1)[0]
-            slopes.append(slope)
-        except np.linalg.LinAlgError:
-            pass # Skip instruments with invalid slopes
+        p = prcSoFar[j, nDays - TREND_LENGTH: nDays + 1]
+        slope = np.polyfit(np.arange(len(p)), np.log(p), 1)[0]
+        slope = np.diff(p)
+        slopes.append(slope)
+    return np.mean(slopes)
 
-    trend = np.mean(slopes) # Calculate the average of all instruments' slopes
-
-    return trend
-
-def getPos(prcSoFar, inst):
+def getPos(prcSoFar, inst, vol_threshold):
     """
-    Compute optimal position for a single instrument.
+    Compute optimal position for a single instrument with volatility and trend-break screening.
 
     Parameters:
-        prcSoFar (np.array): Array of historical prices with shape (N_INST, ndays)
-        inst (int): Current instrument index
+        prcSoFar (np.array): Array of historical prices
+        inst (int): Instrument index
+        vol_threshold (float): Dynamic upper limit for volatility
 
     Returns:
-        int: Optimal position size (negative for short positions)
+        int: Desired position
     """
     global currentPos, nDays
+
+    if exclude[inst]:
+        return 0          
+        return int(np.sign(prev_pos) * min(abs(prev_pos), max_pos))     # <------- OPTIONAL
 
     current_price = prcSoFar[inst, -1]
     prev_pos = currentPos[inst]
     max_pos = POSLIMIT / current_price
 
-    # === Build Y vector and X array ===
+    prices = prcSoFar[inst, :nDays]
 
-    Y = [] # Stores historical outcomes of target intrument
-    X = [] # Stores historical prices of all 50 instruments
+    # === Skip volatile or unstable instruments ===
+    vol = compute_volatility(prices)
+    trend_break = compute_trend_break(prices)
 
-    # Iterate over a number of most recent prices, as specified by LOOKBACK
-    for i in range(nDays - 1 - LOOKBACK, nDays - 1):
+    update_historical_break(inst, trend_break)
 
-        # Model will be trained based on previous price change of instrument
-        change = (prcSoFar[inst, i + 1]) - (prcSoFar[inst, i])
-        if change > COMMRATE:
-            Y.append(1)             # Positive change is outcome 1
-        elif change < -COMMRATE:
-            Y.append(-1)            # Negative change is outcome -1
-        else:
-            Y.append(0)             # Absolute change < commrate is outcome 0
-
-        row = [prcSoFar[j, i] for j in range(N_INST)]
-        X.append(row) # Add the prices for every other instrument to X
-
-    X = np.array(X)
-    Y = np.array(Y)
-
-    # If only one outcome in training data, hold current position
-    if len(np.unique(Y)) == 1:
-        return int(np.sign(prev_pos) * min(abs(prev_pos), max_pos)) # Scale down to $10k size if needed
-
-    # === Scale & Fit  Model ===
-
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-
-    model = LogisticRegression(solver='lbfgs', max_iter=2000)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=ConvergenceWarning)
-        model.fit(X_scaled, Y)
-
-    # === Predict Next Outcome Using Current Prices ===
-
-    # Get current prices of other instruments
-    x_today = np.array([prcSoFar[j, nDays - 1] for j in range(N_INST)]).reshape(1, -1)
-    x_today = scaler.transform(x_today)
-
-    # Predict one out-of-sample outcome
-    probs = model.predict_proba(x_today)[0]
-
-    p_buy = probs[1]    # Probability of positive change
-    p_sell = probs[0]   # Probability of negative change
-
-    # If predicted change is against the trend, signal is 0
-    signal = 0
-    if p_buy > 0.5 and trend > 0:
-        signal = 1
-    elif p_sell > 0.5 and trend < 0:
-        signal = -1
-    target_pos = max_pos * signal # Take maximum position in signal direction
-
-    # If no signal, hold current position, otherwise return target position
-    if abs(signal) <= 1e-6:
+    # Two checks to ensure highly volatile stocks (Based on market volatility) aren't traded
+    # Or instruments with a trend difference (scaled based on the alpha smoothing value) higher 
+    # than the threshold "trend break" score will not be traded
+    if vol > vol_threshold or historical_break_scores[inst] > THRESH_SCORE:
         return int(np.sign(prev_pos) * min(abs(prev_pos), max_pos))
-    else:
-        return int(target_pos)
+        return 0                                                        # <------- OPTIONAL
+    
+    current_price = prcSoFar[inst, -1]
+    max_pos = POSLIMIT / current_price
+
+    return max_pos * np.sign(trend[-1])
