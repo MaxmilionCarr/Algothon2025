@@ -19,7 +19,7 @@ historical_break_scores = np.zeros(N_INST)
 
 # === Strategy Parameters ===
 TREND_LENGTH = 10               # Number of previous prices used to calculate trend 
-THRESH_SCORE = 0.85             # Threshold for excluding instruments with unstable price behavior (based on trend break history)
+THRESH_SCORE = 0.85              # Threshold for excluding instruments with unstable price behavior (based on trend break history)
 VOL_WINDOW = 25                 # Number of days used in calculating rolling volatility for each instrument 
 TREND_BREAK_WINDOW = 15         # Number of days used in calculating rolling trend break for each instrument 
 VOL_MULTIPLIER = 1.547          # Multiplier applied to average market volatility to define a dynamic exclusion threshold
