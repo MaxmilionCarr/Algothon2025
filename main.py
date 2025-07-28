@@ -15,12 +15,12 @@ N_INST = 50
 currentPos = np.zeros(N_INST)
 nDays = 0
 trend = 0
-trendFast = 0
+trendSlow = 0
 historical_break_scores = np.zeros(N_INST)
 
-TREND_LENGTH = 9
-VOL_WINDOW = 24
-VOL_MULTIPLIER = 1.71
+TREND_LENGTH = 8
+VOL_WINDOW = 25
+VOL_MULTIPLIER = 1.8
 multiplier = {
     0: 1,
     1: 1,
@@ -75,7 +75,7 @@ multiplier = {
 }
 
 def getMyPosition(prcSoFar):
-    global currentPos, nDays, trend, trendFast, trendSlow
+    global currentPos, nDays, trend, trendSlow
 
     _, nDays = prcSoFar.shape
 
@@ -83,7 +83,7 @@ def getMyPosition(prcSoFar):
         return currentPos
     
     trend = getTrend(prcSoFar,TREND_LENGTH)
-    trendFast = getTrend(prcSoFar,TREND_LENGTH-1)
+    trendSlow = getTrend(prcSoFar,TREND_LENGTH+1)
 
     volList = []
 
@@ -119,15 +119,15 @@ def getPos(prcSoFar, inst, volThreshold):
 
     mult = multiplier[inst]
 
-    if np.sign(trend) != np.sign(trendFast):
-        return 0
-    else:
-        signal = np.sign(trend)
-
     prices = prcSoFar[inst, :nDays]
     vol = getVolatility(prices)
 
     if vol > volThreshold:
+        return 0
+
+    if np.sign(trend) != np.sign(trendSlow):
         return int(np.sign(prevPos) * maxPos)
+    else:
+        signal = np.sign(trend)
 
     return maxPos * signal * mult
