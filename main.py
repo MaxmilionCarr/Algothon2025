@@ -22,7 +22,6 @@ nDays = 0
 trend = 0
 trendSlow = 0
 volThreshold = 0
-historical_break_scores = np.zeros(N_INST)
 
 TREND_LENGTH = 8
 VOL_WINDOW = 25
