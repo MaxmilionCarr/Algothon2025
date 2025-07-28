@@ -21,6 +21,7 @@ currentPos = np.zeros(N_INST)
 nDays = 0
 trend = 0
 trendSlow = 0
+volThreshold = 0
 historical_break_scores = np.zeros(N_INST)
 
 TREND_LENGTH = 8
@@ -89,7 +90,7 @@ def getMyPosition(prcSoFar):
     Returns:
         np.ndarray: integer position vector (size N_INST)
     """
-    global currentPos, nDays, trend, trendSlow
+    global currentPos, nDays, trend, trendSlow, volThreshold
 
     _, nDays = prcSoFar.shape
 
@@ -107,7 +108,7 @@ def getMyPosition(prcSoFar):
     volThreshold = avgVol * VOL_MULTIPLIER  
 
     for inst in range(N_INST):
-        currentPos[inst] = int(getPos(prcSoFar, inst, volThreshold))
+        currentPos[inst] = int(getPos(prcSoFar, inst))
 
     return currentPos
 
@@ -142,7 +143,7 @@ def getTrend(prcSoFar,trendLength):
         slopes.append(slope)
     return np.mean(slopes)
 
-def getPos(prcSoFar, inst, volThreshold):
+def getPos(prcSoFar, inst):
     """
     Compute a single instrument's target position.
 
