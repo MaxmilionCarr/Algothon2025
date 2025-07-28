@@ -122,7 +122,9 @@ def getVolatility(prices):
     Returns:
         float: volatility
     """
+
     logReturns = np.diff(np.log(prices[-(VOL_WINDOW+1):]))
+    
     return np.std(logReturns)
 
 def getTrend(prcSoFar,trendLength):
@@ -136,11 +138,14 @@ def getTrend(prcSoFar,trendLength):
     Returns:
         float: mean of mean(price diffs) over all instruments
     """
+
     slopes = []
+
     for inst in range(N_INST):
         prices = prcSoFar[inst, nDays - trendLength: nDays]
         slope = np.diff(prices)
         slopes.append(slope)
+
     return np.mean(slopes)
 
 def getPos(prcSoFar, inst):
@@ -155,21 +160,19 @@ def getPos(prcSoFar, inst):
     Returns:
         int: target number of units (signed)
     """
-    currentPrice = prcSoFar[inst, -1]
-    prevPos = currentPos[inst]
-    maxPos = POSLIMIT / currentPrice
 
     mult = multiplier[inst]
-
     prices = prcSoFar[inst, :nDays]
     vol = getVolatility(prices)
 
     if vol > volThreshold:
         return 0
+    
+    currentPrice = prcSoFar[inst, -1]
+    prevPos = currentPos[inst]
+    maxPos = POSLIMIT / currentPrice
 
     if np.sign(trend) != np.sign(trendSlow):
         return int(np.sign(prevPos) * maxPos)
     else:
-        signal = np.sign(trend)
-
-    return maxPos * signal * mult
+        return maxPos * np.sign(trend) * mult
