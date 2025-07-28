@@ -24,7 +24,7 @@ trendSlow = 0
 historical_break_scores = np.zeros(N_INST)
 
 TREND_LENGTH = 8
-VOL_WINDOW = 26
+VOL_WINDOW = 25
 VOL_MULTIPLIER = 1.8
 multiplier = {
     0: 1,
@@ -93,7 +93,7 @@ def getMyPosition(prcSoFar):
 
     _, nDays = prcSoFar.shape
 
-    if nDays < max(TREND_LENGTH+1, VOL_WINDOW):
+    if nDays < max(TREND_LENGTH, VOL_WINDOW)+1:
         return currentPos
     
     trend = getTrend(prcSoFar,TREND_LENGTH)
@@ -121,7 +121,7 @@ def getVolatility(prices):
     Returns:
         float: volatility
     """
-    logReturns = np.diff(np.log(prices[-VOL_WINDOW:]))
+    logReturns = np.diff(np.log(prices[-(VOL_WINDOW+1):]))
     return np.std(logReturns)
 
 def getTrend(prcSoFar,trendLength):
