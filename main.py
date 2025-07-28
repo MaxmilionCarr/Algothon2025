@@ -18,10 +18,9 @@ trend = 0
 trendFast = 0
 historical_break_scores = np.zeros(N_INST)
 
-TREND_LENGTH = 10
-VOL_WINDOW = 10
-VOL_MULTIPLIER = 299
-
+TREND_LENGTH = 9
+VOL_WINDOW = 24
+VOL_MULTIPLIER = 1.71
 multiplier = {
     0: 1,
     1: 1,
@@ -76,7 +75,7 @@ multiplier = {
 }
 
 def getMyPosition(prcSoFar):
-    global currentPos, nDays, trend, trendFast
+    global currentPos, nDays, trend, trendFast, trendSlow
 
     _, nDays = prcSoFar.shape
 
@@ -86,8 +85,10 @@ def getMyPosition(prcSoFar):
     trend = getTrend(prcSoFar,TREND_LENGTH)
     trendFast = getTrend(prcSoFar,TREND_LENGTH-1)
 
+    volList = []
+
     for inst in range(N_INST):
-        volList = [getVolatility(prcSoFar[inst, :nDays])]
+        volList.append(getVolatility(prcSoFar[inst, :nDays]))
     avgVol = np.mean(volList)
     volThreshold = avgVol * VOL_MULTIPLIER  
 
@@ -105,7 +106,7 @@ def getTrend(prcSoFar,trendLength):
 
     slopes = []
     for inst in range(N_INST):
-        prices = prcSoFar[inst, nDays - trendLength: nDays + 1]
+        prices = prcSoFar[inst, nDays - trendLength: nDays]
         slope = np.diff(prices)
         slopes.append(slope)
     return np.mean(slopes)
@@ -115,19 +116,18 @@ def getPos(prcSoFar, inst, volThreshold):
     currentPrice = prcSoFar[inst, -1]
     prevPos = currentPos[inst]
     maxPos = POSLIMIT / currentPrice
-    prices = prcSoFar[inst, :nDays]
 
+    mult = multiplier[inst]
+
+    if np.sign(trend) != np.sign(trendFast):
+        return 0
+    else:
+        signal = np.sign(trend)
+
+    prices = prcSoFar[inst, :nDays]
     vol = getVolatility(prices)
 
     if vol > volThreshold:
-        return int(np.sign(prevPos) * min(abs(prevPos), maxPos))
-
-    mult = multiplier[inst]
-    mult = 1
-
-    if np.sign(trend) != np.sign(trendFast):
-        signal = 0
-    else:
-        signal = np.sign(trend)
+        return int(np.sign(prevPos) * maxPos)
 
     return maxPos * signal * mult
