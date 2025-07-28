@@ -16,7 +16,6 @@ currentPos = np.zeros(N_INST)
 nDays = 0
 trend = 0
 trendSlow = 0
-historical_break_scores = np.zeros(N_INST)
 
 TREND_LENGTH = 8
 VOL_WINDOW = 25
@@ -85,11 +84,13 @@ def getMyPosition(prcSoFar):
     trend = getTrend(prcSoFar,TREND_LENGTH)
     trendSlow = getTrend(prcSoFar,TREND_LENGTH+1)
 
+    # Calculate the average volatility of the market
     volList = []
-
     for inst in range(N_INST):
         volList.append(getVolatility(prcSoFar[inst, :nDays]))
     avgVol = np.mean(volList)
+
+    # Apply a multiplier to dynamically scale the threshold of max volatility
     volThreshold = avgVol * VOL_MULTIPLIER  
 
     for inst in range(N_INST):
@@ -98,6 +99,15 @@ def getMyPosition(prcSoFar):
     return currentPos
 
 def getVolatility(prices):
+    '''
+    Calculates rolling volatility over the last VOL_WINDOW days
+
+    Takes:
+        prices: Array of history prices for an instrument
+    
+    Returns:
+        float: Stanfard deviation of log return over the window
+    '''
 
     logReturns = np.diff(np.log(prices[-VOL_WINDOW-1:]))
     return np.std(logReturns)
@@ -120,8 +130,12 @@ def getPos(prcSoFar, inst, volThreshold):
     mult = multiplier[inst]
 
     prices = prcSoFar[inst, :nDays]
+
+    # Fetch the individual volatility of the instrument
     vol = getVolatility(prices)
 
+    # If a instrument is more volatile than the market and multiplier
+    # reduce the position to 0
     if vol > volThreshold:
         return 0
 
