@@ -27,6 +27,7 @@ historical_break_scores = np.zeros(N_INST)
 TREND_LENGTH = 8
 VOL_WINDOW = 25
 VOL_MULTIPLIER = 1.8
+
 multiplier = {
     0: 1,
     1: 1,
