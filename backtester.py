@@ -473,9 +473,10 @@ def get_subplot(graph_type: str, results: BacktesterResults, subplot: Axes) -> A
 
 
 def get_ema(instrument_price_history: ndarray, lookback: int) -> ndarray:
-    price_series: Series = pd.Series(instrument_price_history)
-    return price_series.ewm(span=lookback,
-        adjust=False).mean()
+    # price_series: Series = pd.Series(instrument_price_history)
+    # return price_series.ewm(span=lookback,
+        # adjust=False).mean()
+    pass
 
 
 # BACKTESTER CLASS ################################################################################
